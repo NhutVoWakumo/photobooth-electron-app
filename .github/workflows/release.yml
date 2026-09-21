@@ -1,4 +1,4 @@
-name: Signed desktop release
+name: Internal desktop release
 
 on:
   push:
@@ -11,14 +11,10 @@ permissions:
 
 jobs:
   macos:
-    name: macOS signed and notarized
+    name: macOS DMG (Apple Silicon and Intel)
     runs-on: macos-14
     env:
-      CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-      CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -26,26 +22,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Require signing credentials
-        shell: bash
-        run: |
-          test -n "$CSC_LINK" || { echo "Missing MAC_CERTIFICATE"; exit 1; }
-          test -n "$CSC_KEY_PASSWORD" || { echo "Missing MAC_CERTIFICATE_PASSWORD"; exit 1; }
-          test -n "$APPLE_ID" || { echo "Missing APPLE_ID"; exit 1; }
-          test -n "$APPLE_APP_SPECIFIC_PASSWORD" || { echo "Missing APPLE_APP_SPECIFIC_PASSWORD"; exit 1; }
-          test -n "$APPLE_TEAM_ID" || { echo "Missing APPLE_TEAM_ID"; exit 1; }
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      - name: Build, sign, notarize and publish macOS installers
+      - name: Build and publish macOS installers
         run: npx electron-builder --mac --publish always
 
   windows:
-    name: Windows signed installer
+    name: Windows x64 installer
     runs-on: windows-latest
     env:
-      CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
-      CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -53,13 +40,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Require signing credentials
-        shell: pwsh
-        run: |
-          if (-not $env:CSC_LINK) { throw "Missing WINDOWS_CERTIFICATE" }
-          if (-not $env:CSC_KEY_PASSWORD) { throw "Missing WINDOWS_CERTIFICATE_PASSWORD" }
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      - name: Build, sign and publish Windows installer
+      - name: Build and publish Windows installer
         run: npx electron-builder --win --publish always

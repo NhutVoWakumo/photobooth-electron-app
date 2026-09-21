@@ -1,12 +1,22 @@
 # Releasing LUMA Booth
 
-Installers are produced by `.github/workflows/release.yml`. The workflow intentionally fails when signing credentials are missing so an unsigned build cannot be mistaken for a signed release.
+Installers are produced by `.github/workflows/release.yml`. This project currently publishes unsigned internal-test builds and requires no custom GitHub secrets.
 
-## Required GitHub Actions secrets
+## Internal test builds
 
-Open **Repository settings → Secrets and variables → Actions** and add:
+The workflow uses the repository's automatic `GITHUB_TOKEN`. It creates:
 
-### macOS
+- macOS Apple Silicon DMG and ZIP
+- macOS Intel DMG and ZIP
+- Windows x64 NSIS installer
+
+These builds are not signed or notarized. macOS testers may need **System Settings → Privacy & Security → Open Anyway**. Windows testers may need **More info → Run anyway** in SmartScreen.
+
+## Signing later
+
+When the app is ready for public distribution, configure the following GitHub Actions secrets and re-enable signing/notarization in the build config.
+
+### macOS secrets
 
 - `MAC_CERTIFICATE`: base64-encoded Apple **Developer ID Application** `.p12` certificate.
 - `MAC_CERTIFICATE_PASSWORD`: password used when exporting the `.p12`.
@@ -16,7 +26,7 @@ Open **Repository settings → Secrets and variables → Actions** and add:
 
 The Apple Developer Program membership must be active. Export the certificate from Keychain Access only after creating it through the Apple Developer account. Never commit the certificate or passwords.
 
-### Windows
+### Windows secrets
 
 - `WINDOWS_CERTIFICATE`: base64-encoded trusted code-signing `.pfx` certificate.
 - `WINDOWS_CERTIFICATE_PASSWORD`: password protecting the `.pfx`.

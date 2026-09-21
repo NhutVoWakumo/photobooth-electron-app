@@ -29,7 +29,7 @@
       "category": "public.app-category.photography",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "notarize": true,
+      "notarize": false,
       "target": [
         { "target": "dmg", "arch": ["arm64", "x64"] },
         { "target": "zip", "arch": ["arm64", "x64"] }
@@ -50,7 +50,8 @@
     "publish": {
       "provider": "github",
       "owner": "NhutVoWakumo",
-      "repo": "photobooth-electron-app"
+      "repo": "photobooth-electron-app",
+      "releaseType": "release"
     }
   },
   "dependencies": {
