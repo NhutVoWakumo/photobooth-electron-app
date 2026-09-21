@@ -1724,7 +1724,7 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .frame-studio-launch .primary-button { align-self: center; justify-self: end; white-space: nowrap; }
 
 /* Frame Studio - compact operator tooling around one stable print canvas. */
-.settings-content:has(.frame-studio) { padding: 0; justify-content: stretch; align-content: stretch; }
+.settings-content:has(.frame-studio) { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: none; padding: 0; justify-content: stretch; justify-items: stretch; align-content: stretch; }
 .frame-studio { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; min-width: 0; min-height: 100%; overflow: hidden; background: var(--color-surface); }
 .frame-studio-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); padding: 1rem 1.25rem; border-bottom: 1px solid var(--color-line); }
 .frame-studio-header h3 { margin: .25rem 0 0; color: var(--color-text); font-family: var(--font-display); font-size: 1.65rem; letter-spacing: -.045em; }
@@ -1733,7 +1733,7 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .studio-history-button { color: var(--color-text-soft); background: transparent; border: 1px solid var(--color-line); border-radius: var(--radius-sm); font-size: .67rem; font-weight: 760; }
 .studio-history-button:hover:not(:disabled) { color: var(--color-text); background: var(--color-raised); }
 .studio-history-button:disabled { cursor: not-allowed; opacity: .38; }
-.frame-studio-grid { display: grid; grid-template-columns: 13.5rem minmax(17rem, 1fr) 14.5rem; min-width: 0; min-height: 0; }
+.frame-studio-grid { display: grid; grid-template-columns: clamp(14rem, 17vw, 18rem) minmax(24rem, 1fr) clamp(16rem, 19vw, 20rem); min-width: 0; min-height: 0; }
 .studio-tools, .studio-inspector { display: grid; align-content: start; gap: var(--space-5); min-width: 0; padding: 1.25rem; overflow: auto; background: oklch(97% .012 145); }
 .studio-tools { border-right: 1px solid var(--color-line); }
 .studio-inspector { border-left: 1px solid var(--color-line); }
@@ -1755,11 +1755,12 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .studio-size-label { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); padding: 0 .25rem .75rem; color: var(--color-text-muted); font-size: .62rem; }
 .studio-size-label strong { color: var(--color-text); font-size: .72rem; }
 .studio-canvas-wrap { display: grid; min-width: 0; min-height: 0; padding: 1.25rem; place-items: center; overflow: auto; }
-.studio-canvas { position: relative; container-type: inline-size; width: min(100%, calc(min(48vh, 34rem) * var(--studio-ratio))); max-width: 100%; height: auto; overflow: hidden; box-shadow: 0 1.5rem 4rem oklch(32% .025 145 / .18); touch-action: none; user-select: none; }
+.studio-canvas { position: relative; container-type: inline-size; width: min(100%, calc(min(68vh, 48rem) * var(--studio-ratio))); max-width: 100%; height: auto; overflow: hidden; box-shadow: 0 1.5rem 4rem oklch(32% .025 145 / .18); touch-action: none; user-select: none; }
 .studio-canvas.drawing { cursor: crosshair; }
-.studio-canvas-item { position: absolute; min-width: 0; min-height: 0; margin: 0; padding: 0; touch-action: none; }
+.studio-canvas-item { position: absolute; min-width: 0; min-height: 0; margin: 0; padding: 0; cursor: grab; touch-action: none; }
+.studio-canvas-item:active { cursor: grabbing; }
 .studio-canvas-item.selected { outline: 2px solid var(--color-accent-ink); outline-offset: 2px; }
-.studio-resize-handle { position: absolute; z-index: 3; right: -.34rem; bottom: -.34rem; display: block; width: .72rem; height: .72rem; background: var(--color-accent-ink); border: 2px solid var(--color-surface); border-radius: 50%; box-shadow: 0 .1rem .35rem oklch(25% .02 145 / .22); cursor: nwse-resize; touch-action: none; }
+.studio-resize-handle { position: absolute; z-index: 3; right: -.6rem; bottom: -.6rem; display: block; width: 1.2rem; height: 1.2rem; background: var(--color-accent-ink); border: 3px solid var(--color-surface); border-radius: 50%; box-shadow: 0 .1rem .35rem oklch(25% .02 145 / .22); cursor: nwse-resize; touch-action: none; }
 .studio-slot { display: grid; place-items: center; color: var(--color-paper); background: linear-gradient(145deg, var(--color-slot-light), var(--color-slot-dark)); border: 0; }
 .studio-slot span { display: grid; width: 1.5rem; height: 1.5rem; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: .65rem; }
 .studio-text { display: block; overflow: hidden; background: transparent; border: 0; line-height: 1.05; white-space: pre-wrap; }

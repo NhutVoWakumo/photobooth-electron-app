@@ -14,6 +14,7 @@ interface FrameStudioProps {
 type Selection = { kind: 'slot' | 'layer'; id: string } | null
 type CanvasInteraction = {
   mode: 'move' | 'resize'
+  target: Exclude<Selection, null>
   startX: number
   startY: number
   x: number
@@ -187,14 +188,14 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     const bounds = canvasRef.current!.getBoundingClientRect()
     return { x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)), y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height)) }
   }
-  const startMove = (event: ReactPointerEvent, next: Selection, x: number, y: number) => {
+  const startMove = (event: ReactPointerEvent, next: Exclude<Selection, null>, x: number, y: number) => {
     if (drawing) return
     event.stopPropagation()
     setSelection(next)
     const point = pointerPosition(event)
     const item = next?.kind === 'slot' ? draft.slots.find(candidate => candidate.id === next.id) : (draft.layers ?? []).find(candidate => candidate.id === next?.id)
     if (!item || !('width' in item) || item.locked) return
-    interactionRef.current = { mode: 'move', startX: point.x, startY: point.y, x, y, width: item.width, height: item.height }
+    interactionRef.current = { mode: 'move', target: next, startX: point.x, startY: point.y, x, y, width: item.width, height: item.height }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const startResize = (event: ReactPointerEvent, next: Exclude<Selection, null>, item: { x: number; y: number; width: number; height: number; locked?: boolean }) => {
@@ -202,19 +203,19 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     event.stopPropagation()
     setSelection(next)
     const point = pointerPosition(event)
-    interactionRef.current = { mode: 'resize', startX: point.x, startY: point.y, ...item }
+    interactionRef.current = { mode: 'resize', target: next, startX: point.x, startY: point.y, ...item }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const moveSelected = (event: ReactPointerEvent) => {
     const interaction = interactionRef.current
-    if (!interaction || !selection) return
+    if (!interaction) return
     const point = pointerPosition(event)
     const deltaX = point.x - interaction.startX
     const deltaY = point.y - interaction.startY
     const patch = interaction.mode === 'move'
       ? { x: clamp(interaction.x + deltaX, 0, 1 - interaction.width), y: clamp(interaction.y + deltaY, 0, 1 - interaction.height) }
       : { width: clamp(interaction.width + deltaX, .04, 1 - interaction.x), height: clamp(interaction.height + deltaY, .04, 1 - interaction.y) }
-    selection.kind === 'slot' ? updateSlot(selection.id, patch) : updateLayer(selection.id, patch)
+    interaction.target.kind === 'slot' ? updateSlot(interaction.target.id, patch) : updateLayer(interaction.target.id, patch)
   }
   const stopMove = () => { interactionRef.current = null; drawingLayerRef.current = null }
 
@@ -224,7 +225,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     const layer: FrameLayer = { id: `draw-${crypto.randomUUID()}`, type: 'freehand', points: [point], color: draft.theme.ink, strokeWidth: 3, zIndex: 40 }
     addLayer(layer)
     drawingLayerRef.current = layer.id
-    interactionRef.current = { mode: 'move', startX: point.x, startY: point.y, x: 0, y: 0, width: 1, height: 1 }
+    interactionRef.current = { mode: 'move', target: { kind: 'layer', id: layer.id }, startX: point.x, startY: point.y, x: 0, y: 0, width: 1, height: 1 }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const drawMove = (event: ReactPointerEvent) => {

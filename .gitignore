@@ -4,6 +4,24 @@ release/
 .DS_Store
 .hallmark/
 *.log
+# Local captures and personal/test media must never enter source control.
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.heic
+*.tif
+*.tiff
+*.bmp
+*.mov
+*.mp4
+*.luma-frame.json
+session.json
+session-library/
+captures/
+photos/
+exports/
+local-data/
 *.p12
 *.pfx
 *.cer
