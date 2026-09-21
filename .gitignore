@@ -1,0 +1,15 @@
+node_modules/
+out/
+release/
+.DS_Store
+.hallmark/
+*.log
+*.p12
+*.pfx
+*.cer
+*.crt
+*.key
+*.mobileprovision
+.env
+.env.*
+!.env.example
