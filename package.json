@@ -1,6 +1,6 @@
 {
   "name": "luma-booth",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "LUMA offline-first desktop photo booth",
   "main": "./out/main/index.js",
   "scripts": {
