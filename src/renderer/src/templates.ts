@@ -96,6 +96,39 @@ function preset(id: string, name: string, description: string, kind: CustomLayou
   return { id, name, description, rows: layout.rows, columns: layout.columns, requiredSlots: layout.slots.length, printLabel, output, slots: layout.slots.map(slot => ({ ...slot, fit: slot.fit ?? 'contain' })), theme, builtIn: true }
 }
 
+// Original vector art for the garden strip. Keeping background and foreground
+// separate makes the design editable in Frame Studio and preserves its print
+// quality at every output resolution.
+function svgDataUrl(svg: string): string {
+  return `data:image/svg+xml;base64,${btoa(svg)}`
+}
+
+const gardenPicnicBackground = svgDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1800">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2=".85" y2="1"><stop stop-color="#a9d3f3"/><stop offset=".28" stop-color="#d7e5fb"/><stop offset=".52" stop-color="#fae9f1"/><stop offset=".74" stop-color="#d9eeb5"/><stop offset="1" stop-color="#b7db72"/></linearGradient>
+    <filter id="wash"><feTurbulence baseFrequency=".015" numOctaves="2" seed="8" type="fractalNoise"/><feColorMatrix values="1 0 0 0 0 0 1 0 0 0 .7 0 .7 0 0 0 0 0 .16 0"/></filter>
+  </defs>
+  <rect width="600" height="1800" fill="url(#sky)"/>
+  <rect width="600" height="1800" filter="url(#wash)" opacity=".42"/>
+  <path d="M0 1310c60-43 104-27 162 10 61 39 117 21 180-12 91-48 172-26 258 25v467H0z" fill="#b9df72" opacity=".72"/>
+  <path d="M0 1450c86-73 148-57 228-5 95 61 182 18 264-31 36-22 72-26 108-14v400H0z" fill="#d8ed86" opacity=".78"/>
+  <g fill="#fff" opacity=".55"><circle cx="52" cy="225" r="5"/><circle cx="94" cy="548" r="3"/><circle cx="548" cy="336" r="5"/><circle cx="518" cy="770" r="3"/><circle cx="61" cy="1041" r="4"/><circle cx="556" cy="1190" r="5"/></g>
+</svg>`)
+
+const gardenPicnicOverlay = svgDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1800">
+  <g stroke="#83b74e" stroke-width="8" stroke-linecap="round" opacity=".9">
+    <path d="M34 1800c5-112 31-198 70-287M99 1800c-2-88-26-174-69-251M170 1800c-7-118 20-185 57-260M433 1800c3-124-25-204-72-278M510 1800c-4-96 25-189 65-270M570 1800c-4-83-35-151-75-210"/>
+  </g>
+  <g fill="#ffcedb" stroke="#fff9f5" stroke-width="3">
+    <g transform="translate(63 1530)"><circle cx="0" cy="-18" r="17"/><circle cx="18" cy="0" r="17"/><circle cx="0" cy="18" r="17"/><circle cx="-18" cy="0" r="17"/><circle fill="#ff9fb9" cx="0" cy="0" r="8"/></g>
+    <g transform="translate(151 1652) scale(.82)"><circle cx="0" cy="-18" r="17"/><circle cx="18" cy="0" r="17"/><circle cx="0" cy="18" r="17"/><circle cx="-18" cy="0" r="17"/><circle fill="#ff9fb9" cx="0" cy="0" r="8"/></g>
+    <g transform="translate(449 1580) scale(1.06)"><circle cx="0" cy="-18" r="17"/><circle cx="18" cy="0" r="17"/><circle cx="0" cy="18" r="17"/><circle cx="-18" cy="0" r="17"/><circle fill="#ff9fb9" cx="0" cy="0" r="8"/></g>
+    <g transform="translate(548 1700) scale(.8)"><circle cx="0" cy="-18" r="17"/><circle cx="18" cy="0" r="17"/><circle cx="0" cy="18" r="17"/><circle cx="-18" cy="0" r="17"/><circle fill="#ff9fb9" cx="0" cy="0" r="8"/></g>
+  </g>
+  <g fill="#fff3a4" opacity=".95"><circle cx="78" cy="1285" r="8"/><circle cx="112" cy="1332" r="5"/><circle cx="491" cy="1302" r="7"/><circle cx="526" cy="1370" r="5"/></g>
+  <g fill="#f8b1ca" opacity=".92"><circle cx="33" cy="1460" r="9"/><circle cx="575" cy="1450" r="11"/><circle cx="288" cy="1740" r="7"/></g>
+</svg>`)
+
 export const templates: TemplateManifest[] = [
   preset('classic-4x1', 'Classic strip', 'Four portraits, stacked.', 'strip-4', '2 × 6 in strip', { width: 600, height: 1800, ppi: 300 }),
   preset('strip-3', 'Three on a strip', 'A shorter vertical sequence.', 'strip-3', '2 × 6 in strip', { width: 600, height: 1800, ppi: 300 }, frameThemes[3]),
@@ -137,6 +170,21 @@ export const templates: TemplateManifest[] = [
     ],
     layers: [
       { id: 'family-wordmark', type: 'text', x: .12, y: .945, width: .76, height: .038, text: 'Family', color: '#92a46e', fontSize: 7.4, fontWeight: 500, align: 'center', fontFamily: 'script', italic: true, zIndex: 30 }
+    ]
+  },
+  {
+    id: 'garden-picnic', name: 'Garden picnic', description: 'Four family moments over an airy painted garden strip.', rows: 4, columns: 1, requiredSlots: 4, printLabel: '2 × 6 in strip', output: { width: 600, height: 1800, ppi: 300 }, builtIn: true,
+    theme: { id: 'garden-picnic', label: 'Garden picnic', paper: '#dbe9e7', ink: '#31543a', accent: '#ef92ae', slotLight: '#edf5e1', slotDark: '#98be7a' },
+    background: { kind: 'solid', color: '#dbe9e7', secondaryColor: '#dbe9e7', scale: 8, angle: 0 },
+    slots: [
+      { id: 'slot-1', x: .055, y: .022, width: .89, height: .192, shape: 'rounded', radius: .105, fit: 'cover', stroke: '#ffffff', strokeWidth: 5, zIndex: 10 },
+      { id: 'slot-2', x: .055, y: .255, width: .89, height: .192, shape: 'rounded', radius: .105, fit: 'cover', stroke: '#ffffff', strokeWidth: 5, zIndex: 10 },
+      { id: 'slot-3', x: .055, y: .488, width: .89, height: .192, shape: 'rounded', radius: .105, fit: 'cover', stroke: '#ffffff', strokeWidth: 5, zIndex: 10 },
+      { id: 'slot-4', x: .055, y: .721, width: .89, height: .192, shape: 'rounded', radius: .105, fit: 'cover', stroke: '#ffffff', strokeWidth: 5, zIndex: 10 }
+    ],
+    layers: [
+      { id: 'garden-background', type: 'image', x: 0, y: 0, width: 1, height: 1, src: gardenPicnicBackground, opacity: 1, zIndex: 0, locked: true },
+      { id: 'garden-foreground', type: 'image', x: 0, y: 0, width: 1, height: 1, src: gardenPicnicOverlay, opacity: 1, zIndex: 30, locked: true }
     ]
   }
 ]
