@@ -6,6 +6,7 @@ import { BrandLogo } from './BrandLogo'
 import { FrameArtwork } from './FrameArtwork'
 import { getPhysicalPrintSize, parseFrameImport, templates, type TemplateManifest } from '../templates'
 import { FrameStudio } from './FrameStudio'
+import { importFramePack, makeDemoFramePack } from '../lib/framePack'
 
 interface SettingsPanelProps {
   cameraDevices: CameraDevice[]
@@ -136,12 +137,25 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
 
 function FrameSettings({ draft, update }: { draft: BoothSettings; update: UpdateSetting }): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const packInputRef = useRef<HTMLInputElement>(null)
   const [importMessage, setImportMessage] = useState('')
   const [studioFrame, setStudioFrame] = useState<TemplateManifest | null | undefined>(undefined)
   const allFrames = [...templates, ...draft.customFrames]
   const activeFrames = allFrames.filter(frame => draft.enabledFrameIds.includes(frame.id))
   const archivedFrames = allFrames.filter(frame => !draft.enabledFrameIds.includes(frame.id))
   const enabledCount = activeFrames.length
+
+  const addImportedFrame = (frame: TemplateManifest) => {
+    const exists = draft.customFrames.some(item => item.id === frame.id)
+    update('customFrames', exists ? draft.customFrames.map(item => item.id === frame.id ? frame : item) : [...draft.customFrames, frame])
+    if (!draft.enabledFrameIds.includes(frame.id)) update('enabledFrameIds', [...draft.enabledFrameIds, frame.id])
+    setImportMessage(tr(draft.language, 'Đã nhập Frame Pack. Bấm Lưu cài đặt để lưu local.', 'Frame Pack imported. Choose Save settings to persist it locally.'))
+  }
+  const importPack = async (file?: File) => {
+    if (!file) return
+    try { addImportedFrame(await importFramePack(file)) }
+    catch (error) { setImportMessage(error instanceof Error ? error.message : tr(draft.language, 'Không thể đọc Frame Pack.', 'Could not read Frame Pack.')) }
+  }
 
   const toggleFrame = (frame: TemplateManifest) => {
     const enabled = draft.enabledFrameIds.includes(frame.id)
@@ -215,7 +229,8 @@ function FrameSettings({ draft, update }: { draft: BoothSettings; update: Update
 
     <div className="frame-builder frame-studio-launch"><div><p className="frame-builder-kicker">LUMA FRAME STUDIO</p><h4>{tr(draft.language, 'Thiết kế frame tự do', 'Design a custom frame')}</h4><p>{tr(draft.language, 'Tạo mask ảnh heart, blob, star hoặc scallop; thêm sticker vector, pattern, chữ có outline, shape, nét vẽ, logo và overlay. Có Undo/Redo, layer controls, lưu local và export để sửa lại.', 'Create heart, blob, star, or scallop photo masks; add vector stickers, patterns, outlined type, shapes, drawing, logos, and overlays. Undo/Redo, layer controls, local storage, and editable export are included.')}</p></div><button className="primary-button" type="button" onClick={() => openStudio()}>{tr(draft.language, 'Mở Frame Studio', 'Open Frame Studio')}</button></div>
 
-    <div className="frame-import"><div><h4>{tr(draft.language, 'Import frame đã export', 'Import an exported frame')}</h4><p>{tr(draft.language, 'File .luma-frame.json giữ nguyên toàn bộ nội dung để sửa tiếp. Với file PSD, PDF, Figma hoặc Canva từ designer, hãy export một PNG/SVG trong suốt đúng kích thước frame, thêm nó bằng Logo / overlay trong Studio, rồi đặt các ô ảnh phía dưới.', 'A .luma-frame.json keeps every element editable. For PSD, PDF, Figma, or Canva handoffs, export a transparent full-size PNG/SVG, add it with Logo / overlay in Studio, then place the photo slots underneath.')}</p></div><input ref={fileInputRef} className="visually-hidden" type="file" accept="application/json,.json,.luma-frame.json" onChange={event => importFrame(event.target.files?.[0])} /><button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()}>{tr(draft.language, 'Chọn file frame', 'Choose frame file')}</button></div>
+    <div className="frame-import"><div><h4>{tr(draft.language, 'Nhập Frame Pack từ designer', 'Import a designer Frame Pack')}</h4><p>{tr(draft.language, 'Frame Pack .zip gồm manifest, nền, overlay và mask. Nó là cách bàn giao chuẩn từ Figma, Canva, Photoshop hoặc Penci sau khi export asset.', 'A Frame Pack .zip contains a manifest, background, overlay, and masks. It is the standard handoff from Figma, Canva, Photoshop, or Penci after assets are exported.')}</p></div><input ref={packInputRef} className="visually-hidden" type="file" accept="application/zip,.zip,.luma-frame.zip" onChange={event => void importPack(event.target.files?.[0])} /><div className="frame-import-actions"><button className="primary-button" type="button" onClick={() => packInputRef.current?.click()}>{tr(draft.language, 'Chọn Frame Pack', 'Choose Frame Pack')}</button><button className="secondary-button" type="button" onClick={() => void importPack(makeDemoFramePack())}>{tr(draft.language, 'Thử mẫu demo', 'Try demo pack')}</button></div></div>
+    <div className="frame-import compact"><div><h4>{tr(draft.language, 'Nhập LUMA JSON cũ', 'Import legacy LUMA JSON')}</h4><p>{tr(draft.language, 'Dành cho frame đã export từ phiên bản Studio trước.', 'For frames exported by an earlier Studio version.')}</p></div><input ref={fileInputRef} className="visually-hidden" type="file" accept="application/json,.json,.luma-frame.json" onChange={event => importFrame(event.target.files?.[0])} /><button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()}>{tr(draft.language, 'Chọn JSON', 'Choose JSON')}</button></div>
     {importMessage && <p className="frame-import-status" role="status">{importMessage}</p>}
   </div>
 }

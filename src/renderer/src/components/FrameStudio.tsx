@@ -3,6 +3,7 @@ import { frameThemes, getPhysicalPrintSize, parseFrameImport, type FrameBackgrou
 import { StickerIcon } from './StickerIcon'
 import { tr, type Language } from '../i18n'
 import { shapeBorderRadius, shapeClipPath } from '../lib/frameGeometry'
+import { exportFramePack, importFramePack } from '../lib/framePack'
 
 interface FrameStudioProps {
   language: Language
@@ -67,6 +68,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
   const [selection, setSelection] = useState<Selection>(() => ({ kind: 'slot', id: draft.slots[0].id }))
   const [drawing, setDrawing] = useState(false)
   const [status, setStatus] = useState('')
+  const assetPlacementRef = useRef<'background' | 'overlay'>('overlay')
   const canvasRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const designRef = useRef<HTMLInputElement>(null)
@@ -238,6 +240,11 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+    if (file.name.endsWith('.zip')) {
+      void importFramePack(file).then(imported => { setDraft(imported); setSelection({ kind: 'slot', id: imported.slots[0].id }); setStatus(tr(language, 'Đã mở Frame Pack để tiếp tục chỉnh sửa.', 'Frame Pack opened and ready to edit.')) }).catch(error => setStatus(error instanceof Error ? error.message : 'Invalid Frame Pack.'))
+      event.target.value = ''
+      return
+    }
     if (file.type === 'application/json' || file.name.endsWith('.json')) {
       const reader = new FileReader()
       reader.onload = () => {
@@ -255,20 +262,21 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     if (!['image/png', 'image/jpeg', 'image/svg+xml'].includes(file.type)) return setStatus(tr(language, 'Hãy dùng PNG, JPEG hoặc SVG.', 'Use a PNG, JPEG, or SVG file.'))
     if (file.size > 4_000_000) return setStatus(tr(language, 'Asset phải nhỏ hơn 4 MB để lưu local ổn định.', 'Keep assets under 4 MB for reliable local storage.'))
     const reader = new FileReader()
-    reader.onload = () => addLayer({ id: `image-${crypto.randomUUID()}`, type: 'image', x: .05, y: .05, width: .9, height: .9, src: String(reader.result), opacity: 1, zIndex: 25 })
+    reader.onload = () => addLayer({ id: `image-${crypto.randomUUID()}`, type: 'image', x: 0, y: 0, width: 1, height: 1, src: String(reader.result), opacity: 1, zIndex: assetPlacementRef.current === 'background' ? 0 : 30, locked: assetPlacementRef.current === 'background' })
     reader.readAsDataURL(file)
     event.target.value = ''
   }
+  const chooseAsset = (placement: 'background' | 'overlay') => { assetPlacementRef.current = placement; designRef.current?.click() }
 
   const exportFrame = () => {
-    const blob = new Blob([JSON.stringify({ ...draft, requiredSlots: draft.slots.length }, null, 2)], { type: 'application/json' })
+    const blob = exportFramePack({ ...draft, requiredSlots: draft.slots.length })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `${draft.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'luma-frame'}.luma-frame.json`
+    anchor.download = `${draft.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'luma-frame'}.luma-frame.zip`
     anchor.click()
     URL.revokeObjectURL(url)
-    setStatus(tr(language, 'Đã export file có thể import và sửa lại.', 'Editable frame file exported.'))
+    setStatus(tr(language, 'Đã export Frame Pack có thể import và sửa lại.', 'Editable Frame Pack exported.'))
   }
 
   const save = () => onSave({ ...draft, requiredSlots: draft.slots.length, rows: 1, columns: draft.slots.length, builtIn: false, createdAt: draft.createdAt ?? new Date().toISOString() })
@@ -277,7 +285,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     <header className="frame-studio-header">
       <div><button className="text-button" type="button" onClick={onClose}>{tr(language, 'Quay lại thư viện', 'Back to library')}</button><h3>{tr(language, 'Frame Studio', 'Frame Studio')}</h3></div>
       <div className="frame-studio-actions"><button className="studio-history-button" type="button" onClick={undo} disabled={historyRef.current.length === 0}>{tr(language, 'Hoàn tác', 'Undo')}</button><button className="studio-history-button" type="button" onClick={redo} disabled={futureRef.current.length === 0}>{tr(language, 'Làm lại', 'Redo')}</button><button className="secondary-button" type="button" onClick={() => fileRef.current?.click()}>{tr(language, 'Mở file', 'Open file')}</button><button className="secondary-button" type="button" onClick={exportFrame}>{tr(language, 'Export', 'Export')}</button><button className="primary-button" type="button" onClick={save}>{tr(language, 'Lưu vào thư viện', 'Save to library')}</button></div>
-      <input ref={fileRef} className="visually-hidden" type="file" accept="application/json,.json,.luma-frame.json" onChange={handleFile} />
+      <input ref={fileRef} className="visually-hidden" type="file" accept="application/zip,.zip,.luma-frame.zip,application/json,.json,.luma-frame.json" onChange={handleFile} />
     </header>
 
     <div className="frame-studio-grid">
@@ -286,7 +294,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
         <label>{tr(language, 'Kích thước in', 'Print size')}<select value={preset} onChange={event => event.target.value !== 'custom' && setPreset(event.target.value as CanvasPreset)}>{preset === 'custom' && <option value="custom">{tr(language, 'Kích thước tùy chỉnh', 'Custom size')}</option>}{Object.entries(presetMap).map(([id, item]) => <option value={id} key={id}>{item.label} - {item.width} × {item.height}px</option>)}</select></label>
         <div className="studio-dimensions"><label>{tr(language, 'Rộng (px)', 'Width (px)')}<input type="number" min="300" max="6000" step="10" value={draft.output.width} onChange={event => setDraft(current => ({ ...current, output: { ...current.output, width: Number(event.target.value) }, printLabel: `Custom ${event.target.value} × ${current.output.height}px` }))} /></label><label>{tr(language, 'Cao (px)', 'Height (px)')}<input type="number" min="300" max="6000" step="10" value={draft.output.height} onChange={event => setDraft(current => ({ ...current, output: { ...current.output, height: Number(event.target.value) }, printLabel: `Custom ${current.output.width} × ${event.target.value}px` }))} /></label></div>
         <label>PPI<input type="number" min="72" max="600" step="1" value={draft.output.ppi} onChange={event => setDraft(current => ({ ...current, output: { ...current.output, ppi: clamp(Number(event.target.value), 72, 600) } }))} /><small>{tr(language, 'Dùng 300 PPI cho máy in ảnh tiêu chuẩn.', 'Use 300 PPI for standard photo printing.')}</small></label>
-        <div className="studio-tool-group"><strong>{tr(language, 'Thêm vào canvas', 'Add to canvas')}</strong><div className="studio-tool-buttons"><button type="button" onClick={addSlot}>+ {tr(language, 'Ô ảnh', 'Photo')}</button><button type="button" onClick={addText}>+ {tr(language, 'Chữ', 'Text')}</button><button type="button" onClick={addShape}>+ {tr(language, 'Hình', 'Shape')}</button><button type="button" onClick={() => designRef.current?.click()}>+ {tr(language, 'Logo / overlay', 'Logo / overlay')}</button><button className={drawing ? 'active' : ''} type="button" aria-pressed={drawing} onClick={() => setDrawing(value => !value)}>{tr(language, 'Vẽ tự do', 'Draw')}</button></div></div>
+        <div className="studio-tool-group"><strong>{tr(language, 'Thêm vào canvas', 'Add to canvas')}</strong><div className="studio-tool-buttons"><button type="button" onClick={addSlot}>+ {tr(language, 'Ô ảnh', 'Photo')}</button><button type="button" onClick={addText}>+ {tr(language, 'Chữ', 'Text')}</button><button type="button" onClick={addShape}>+ {tr(language, 'Hình', 'Shape')}</button><button type="button" onClick={() => chooseAsset('background')}>+ {tr(language, 'Nền ảnh', 'Background')}</button><button type="button" onClick={() => chooseAsset('overlay')}>+ {tr(language, 'Overlay / logo', 'Overlay / logo')}</button><button className={drawing ? 'active' : ''} type="button" aria-pressed={drawing} onClick={() => setDrawing(value => !value)}>{tr(language, 'Vẽ tự do', 'Draw')}</button></div></div>
         <div className="studio-tool-group"><strong>{tr(language, 'Sticker', 'Stickers')}</strong><div className="studio-sticker-grid">{stickerChoices.map(sticker => <button type="button" key={sticker} aria-label={`${tr(language, 'Thêm sticker', 'Add sticker')} ${sticker}`} title={sticker} onClick={() => addSticker(sticker)}><StickerIcon kind={sticker} color={draft.theme.ink} secondaryColor={draft.theme.accent} stroke={draft.theme.ink} strokeWidth={1.5} /></button>)}</div></div>
         <input ref={designRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/svg+xml,.png,.jpg,.jpeg,.svg" onChange={handleDesignAsset} />
         <div className="studio-tool-group"><strong>{tr(language, 'Nền canvas', 'Canvas background')}</strong><label>{tr(language, 'Hoạ tiết', 'Pattern')}<select value={draft.background?.kind ?? 'solid'} onChange={event => setDraft(current => ({ ...current, background: { kind: event.target.value as FrameBackgroundKind, color: current.background?.color ?? current.theme.paper, secondaryColor: current.background?.secondaryColor ?? current.theme.slotLight, scale: current.background?.scale ?? 8, angle: current.background?.angle ?? 45 } }))}><option value="solid">Solid</option><option value="checker">Checker</option><option value="grid">Grid</option><option value="dots">Dots</option><option value="stripes">Stripes</option><option value="gradient">Gradient</option></select></label><div className="studio-colors"><label>{tr(language, 'Màu nền', 'Base')}<input type="color" value={draft.background?.color ?? draft.theme.paper} onChange={event => setDraft(current => ({ ...current, background: { kind: current.background?.kind ?? 'solid', color: event.target.value, secondaryColor: current.background?.secondaryColor ?? current.theme.slotLight, scale: current.background?.scale ?? 8, angle: current.background?.angle ?? 45 } }))} /></label><label>{tr(language, 'Màu phụ', 'Second')}<input type="color" value={draft.background?.secondaryColor ?? draft.theme.slotLight} onChange={event => setDraft(current => ({ ...current, background: { kind: current.background?.kind ?? 'solid', color: current.background?.color ?? current.theme.paper, secondaryColor: event.target.value, scale: current.background?.scale ?? 8, angle: current.background?.angle ?? 45 } }))} /></label></div>{draft.background?.kind !== 'solid' && <label>{tr(language, 'Độ lớn hoạ tiết', 'Pattern scale')}<input type="range" min="2" max="30" step="1" value={draft.background?.scale ?? 8} onChange={event => setDraft(current => ({ ...current, background: { kind: current.background?.kind ?? 'solid', color: current.background?.color ?? current.theme.paper, secondaryColor: current.background?.secondaryColor ?? current.theme.slotLight, scale: Number(event.target.value), angle: current.background?.angle ?? 45 } }))} /></label>}</div>
