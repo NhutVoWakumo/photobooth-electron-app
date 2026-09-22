@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { SettingsPanel } from './components/SettingsPanel'
+import { FrameStudio } from './components/FrameStudio'
 import { TemplatePicker } from './components/TemplatePicker'
 import { KioskMotion } from './components/KioskMotion'
 import { SessionHome } from './components/SessionHome'
@@ -36,6 +37,8 @@ export function App(): JSX.Element {
   const [settings, setSettings] = useState<BoothSettings>(readSettings)
   const [stage, setStage] = useState<BoothStage>('idle')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'general' | 'frames'>('general')
+  const [studioFrame, setStudioFrame] = useState<TemplateManifest | null | undefined>(undefined)
   const [sessions, setSessions] = useState<BoothSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeFrameId, setActiveFrameId] = useState<string | null>(null)
@@ -81,6 +84,19 @@ export function App(): JSX.Element {
   const selectCamera = (cameraId: string) => {
     const selected = camera.devices.find(device => device.id === cameraId)
     setSettings(current => ({ ...current, cameraId, cameraName: selected?.label ?? current.cameraName }))
+  }
+  const openStudio = (frame?: TemplateManifest) => {
+    setSettingsTab('frames')
+    if (!frame) return setStudioFrame(null)
+    setStudioFrame(frame.builtIn ? { ...structuredClone(frame), id: `custom-${crypto.randomUUID()}`, name: `${frame.name} remix`, builtIn: false, createdAt: new Date().toISOString() } : structuredClone(frame))
+  }
+  const saveStudioFrame = (frame: TemplateManifest) => {
+    setSettings(current => {
+      const exists = current.customFrames.some(item => item.id === frame.id)
+      const customFrames = exists ? current.customFrames.map(item => item.id === frame.id ? frame : item) : [...current.customFrames, frame]
+      return { ...current, customFrames, enabledFrameIds: current.enabledFrameIds.includes(frame.id) ? current.enabledFrameIds : [...current.enabledFrameIds, frame.id] }
+    })
+    setStudioFrame(undefined)
   }
   const captureSlot = async (slotIndex: number) => {
     const selected = await camera.startCamera(settings.cameraId || undefined)
@@ -138,9 +154,10 @@ export function App(): JSX.Element {
   return <main className="app-shell" data-motion={settings.motionLevel} data-stage={stage} ref={appRef}>
     <KioskMotion level={settings.motionLevel} scope={appRef} stage={stage} />
     <div className="ambient-orb orb-one" aria-hidden="true" /><div className="ambient-orb orb-two" aria-hidden="true" />
-    <button className="settings-fab" onClick={() => setSettingsOpen(true)}>{t(settings.language, 'settings')}</button>
+    <button className="settings-fab" onClick={() => { setSettingsTab('general'); setSettingsOpen(true) }}>{t(settings.language, 'settings')}</button>
     {storageStatus === 'error' && <p className="storage-error" role="alert">{settings.language === 'vi' ? 'Không thể lưu thư viện phiên trên máy này.' : 'The local session library could not be saved.'}</p>}
     <div className="app-stage">{content}</div>
-    {settingsOpen && <SettingsPanel settings={settings} cameraDevices={camera.devices} cameraStatus={camera.status} onCameraChange={selectCamera} onChange={setSettings} onRefreshCameras={() => void camera.refreshDevices()} onClose={() => setSettingsOpen(false)} />}
+    {settingsOpen && studioFrame === undefined && <SettingsPanel settings={settings} cameraDevices={camera.devices} cameraStatus={camera.status} onCameraChange={selectCamera} onChange={setSettings} onRefreshCameras={() => void camera.refreshDevices()} onOpenStudio={openStudio} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />}
+    {studioFrame !== undefined && <div className="frame-studio-view"><FrameStudio language={settings.language} initialTemplate={studioFrame ?? undefined} onClose={() => setStudioFrame(undefined)} onSave={saveStudioFrame} /></div>}
   </main>
 }

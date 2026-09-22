@@ -5,7 +5,6 @@ import { t, tr } from '../i18n'
 import { BrandLogo } from './BrandLogo'
 import { FrameArtwork } from './FrameArtwork'
 import { getPhysicalPrintSize, parseFrameImport, templates, type TemplateManifest } from '../templates'
-import { FrameStudio } from './FrameStudio'
 import { importFramePack, makeDemoFramePack } from '../lib/framePack'
 
 interface SettingsPanelProps {
@@ -15,16 +14,18 @@ interface SettingsPanelProps {
   onCameraChange: (cameraId: string) => void
   onChange: (settings: BoothSettings) => void
   onRefreshCameras: () => void
+  onOpenStudio: (frame?: TemplateManifest) => void
+  initialTab?: SettingsTab
   onClose: () => void
 }
 
 type SettingsTab = 'general' | 'frames' | 'capture' | 'output' | 'experience'
 
 export function SettingsPanel({
-  cameraDevices, cameraStatus, settings, onCameraChange, onChange, onRefreshCameras, onClose
+  cameraDevices, cameraStatus, settings, onCameraChange, onChange, onRefreshCameras, onOpenStudio, initialTab = 'general', onClose
 }: SettingsPanelProps): JSX.Element {
   const [draft, setDraft] = useState(settings)
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general')
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const update = <Key extends keyof BoothSettings>(key: Key, value: BoothSettings[Key]) => setDraft(current => ({ ...current, [key]: value }))
 
@@ -36,6 +37,8 @@ export function SettingsPanel({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
+  useEffect(() => { setDraft(settings) }, [settings])
+  useEffect(() => { setActiveTab(initialTab) }, [initialTab])
 
   const selectCamera = (cameraId: string) => {
     const selected = cameraDevices.find(device => device.id === cameraId)
@@ -89,7 +92,7 @@ export function SettingsPanel({
               onSelectCamera={selectCamera}
               update={update}
             />}
-            {activeTab === 'frames' && <FrameSettings draft={draft} update={update} />}
+            {activeTab === 'frames' && <FrameSettings draft={draft} update={update} onOpenStudio={onOpenStudio} />}
             {activeTab === 'capture' && <CaptureSettings draft={draft} update={update} />}
             {activeTab === 'output' && <OutputSettings draft={draft} update={update} />}
             {activeTab === 'experience' && <ExperienceSettings draft={draft} update={update} />}
@@ -135,11 +138,10 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
   </div>
 }
 
-function FrameSettings({ draft, update }: { draft: BoothSettings; update: UpdateSetting }): JSX.Element {
+function FrameSettings({ draft, update, onOpenStudio }: { draft: BoothSettings; update: UpdateSetting; onOpenStudio: (frame?: TemplateManifest) => void }): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const packInputRef = useRef<HTMLInputElement>(null)
   const [importMessage, setImportMessage] = useState('')
-  const [studioFrame, setStudioFrame] = useState<TemplateManifest | null | undefined>(undefined)
   const allFrames = [...templates, ...draft.customFrames]
   const activeFrames = allFrames.filter(frame => draft.enabledFrameIds.includes(frame.id))
   const archivedFrames = allFrames.filter(frame => !draft.enabledFrameIds.includes(frame.id))
@@ -185,21 +187,6 @@ function FrameSettings({ draft, update }: { draft: BoothSettings; update: Update
     update('enabledFrameIds', draft.enabledFrameIds.filter(id => id !== frame.id))
   }
 
-  const openStudio = (frame?: TemplateManifest) => {
-    if (!frame) return setStudioFrame(null)
-    setStudioFrame(frame.builtIn ? { ...structuredClone(frame), id: `custom-${crypto.randomUUID()}`, name: `${frame.name} remix`, builtIn: false, createdAt: new Date().toISOString() } : frame)
-  }
-
-  const saveStudioFrame = (frame: TemplateManifest) => {
-    const exists = draft.customFrames.some(item => item.id === frame.id)
-    update('customFrames', exists ? draft.customFrames.map(item => item.id === frame.id ? frame : item) : [...draft.customFrames, frame])
-    if (!draft.enabledFrameIds.includes(frame.id)) update('enabledFrameIds', [...draft.enabledFrameIds, frame.id])
-    setStudioFrame(undefined)
-    setImportMessage(tr(draft.language, 'Đã thêm frame vào thư viện. Bấm Lưu cài đặt để lưu local.', 'Frame added to the library. Choose Save settings to persist it locally.'))
-  }
-
-  if (studioFrame !== undefined) return <FrameStudio language={draft.language} initialTemplate={studioFrame ?? undefined} onClose={() => setStudioFrame(undefined)} onSave={saveStudioFrame} />
-
   return <div className="settings-section frame-settings-section">
     <SettingsPageHeader title={tr(draft.language, 'Khung cho khách chọn', 'Guest frame selection')} description={tr(draft.language, 'Chọn những layout xuất hiện ngoài booth. Mỗi khung vẫn giữ đúng tỷ lệ in khi hiển thị.', 'Choose which layouts guests can see. Every preview keeps its final print ratio.')} aside={<strong className="settings-stat">{enabledCount}<span>{tr(draft.language, 'đang bật', 'active')}</span></strong>} />
 
@@ -209,7 +196,7 @@ function FrameSettings({ draft, update }: { draft: BoothSettings; update: Update
         {activeFrames.map(frame => <article className="frame-active-card" key={frame.id} role="listitem">
           <div className="frame-active-preview"><FrameArtwork template={frame} language={draft.language} /></div>
           <div className="frame-active-copy"><strong>{frame.name}</strong><small>{frame.requiredSlots} {tr(draft.language, 'ảnh', frame.requiredSlots === 1 ? 'photo' : 'photos')}<br />{getPhysicalPrintSize(frame)}<br />{frame.output.width} × {frame.output.height}px at {frame.output.ppi} PPI</small></div>
-          <div className="frame-active-actions"><button className="frame-edit-button" type="button" onClick={() => openStudio(frame)}>{frame.builtIn ? tr(draft.language, 'Remix', 'Remix') : tr(draft.language, 'Chỉnh sửa', 'Edit')}</button><button className="frame-on-button" type="button" aria-pressed="true" onClick={() => toggleFrame(frame)} disabled={enabledCount === 1}>{tr(draft.language, 'Đang hiện', 'Visible')}</button>{!frame.builtIn && <button className="frame-remove" type="button" onClick={() => removeCustomFrame(frame)}>{tr(draft.language, 'Gỡ', 'Remove')}</button>}</div>
+          <div className="frame-active-actions"><button className="frame-edit-button" type="button" onClick={() => onOpenStudio(frame)}>{frame.builtIn ? tr(draft.language, 'Remix', 'Remix') : tr(draft.language, 'Chỉnh sửa', 'Edit')}</button><button className="frame-on-button" type="button" aria-pressed="true" onClick={() => toggleFrame(frame)} disabled={enabledCount === 1}>{tr(draft.language, 'Đang hiện', 'Visible')}</button>{!frame.builtIn && <button className="frame-remove" type="button" onClick={() => removeCustomFrame(frame)}>{tr(draft.language, 'Gỡ', 'Remove')}</button>}</div>
         </article>)}
       </div>
     </section>
@@ -220,14 +207,14 @@ function FrameSettings({ draft, update }: { draft: BoothSettings; update: Update
         {archivedFrames.map(frame => <article className="frame-archive-card" key={frame.id} role="listitem">
           <div className="frame-archive-preview"><FrameArtwork template={frame} language={draft.language} /></div>
           <div className="frame-archive-copy"><strong>{frame.name}</strong><small>{frame.requiredSlots} {tr(draft.language, 'ảnh', frame.requiredSlots === 1 ? 'photo' : 'photos')}<br />{getPhysicalPrintSize(frame)}<br />{frame.output.width} × {frame.output.height}px at {frame.output.ppi} PPI</small></div>
-          <button className="frame-edit-button" type="button" onClick={() => openStudio(frame)}>{frame.builtIn ? tr(draft.language, 'Remix', 'Remix') : tr(draft.language, 'Chỉnh sửa', 'Edit')}</button>
+          <button className="frame-edit-button" type="button" onClick={() => onOpenStudio(frame)}>{frame.builtIn ? tr(draft.language, 'Remix', 'Remix') : tr(draft.language, 'Chỉnh sửa', 'Edit')}</button>
           <button className="frame-add-button" type="button" onClick={() => toggleFrame(frame)}>{tr(draft.language, 'Thêm vào booth', 'Add to booth')}</button>
           {!frame.builtIn && <button className="frame-remove" type="button" onClick={() => removeCustomFrame(frame)}>{tr(draft.language, 'Gỡ', 'Remove')}</button>}
         </article>)}
       </div>
     </section>
 
-    <div className="frame-builder frame-studio-launch"><div><p className="frame-builder-kicker">LUMA FRAME STUDIO</p><h4>{tr(draft.language, 'Thiết kế frame tự do', 'Design a custom frame')}</h4><p>{tr(draft.language, 'Tạo mask ảnh heart, blob, star hoặc scallop; thêm sticker vector, pattern, chữ có outline, shape, nét vẽ, logo và overlay. Có Undo/Redo, layer controls, lưu local và export để sửa lại.', 'Create heart, blob, star, or scallop photo masks; add vector stickers, patterns, outlined type, shapes, drawing, logos, and overlays. Undo/Redo, layer controls, local storage, and editable export are included.')}</p></div><button className="primary-button" type="button" onClick={() => openStudio()}>{tr(draft.language, 'Mở Frame Studio', 'Open Frame Studio')}</button></div>
+    <div className="frame-builder frame-studio-launch"><div><p className="frame-builder-kicker">LUMA FRAME STUDIO</p><h4>{tr(draft.language, 'Thiết kế frame tự do', 'Design a custom frame')}</h4><p>{tr(draft.language, 'Tạo mask ảnh heart, blob, star hoặc scallop; thêm sticker vector, pattern, chữ có outline, shape, nét vẽ, logo và overlay. Có Undo/Redo, layer controls, lưu local và export để sửa lại.', 'Create heart, blob, star, or scallop photo masks; add vector stickers, patterns, outlined type, shapes, drawing, logos, and overlays. Undo/Redo, layer controls, local storage, and editable export are included.')}</p></div><button className="primary-button" type="button" onClick={() => onOpenStudio()}>{tr(draft.language, 'Mở Frame Studio', 'Open Frame Studio')}</button></div>
 
     <div className="frame-import"><div><h4>{tr(draft.language, 'Nhập Frame Pack từ designer', 'Import a designer Frame Pack')}</h4><p>{tr(draft.language, 'Frame Pack .zip gồm manifest, nền, overlay và mask. Nó là cách bàn giao chuẩn từ Figma, Canva, Photoshop hoặc Penci sau khi export asset.', 'A Frame Pack .zip contains a manifest, background, overlay, and masks. It is the standard handoff from Figma, Canva, Photoshop, or Penci after assets are exported.')}</p></div><input ref={packInputRef} className="visually-hidden" type="file" accept="application/zip,.zip,.luma-frame.zip" onChange={event => void importPack(event.target.files?.[0])} /><div className="frame-import-actions"><button className="primary-button" type="button" onClick={() => packInputRef.current?.click()}>{tr(draft.language, 'Chọn Frame Pack', 'Choose Frame Pack')}</button><button className="secondary-button" type="button" onClick={() => void importPack(makeDemoFramePack())}>{tr(draft.language, 'Thử mẫu demo', 'Try demo pack')}</button></div></div>
     <div className="frame-import compact"><div><h4>{tr(draft.language, 'Nhập LUMA JSON cũ', 'Import legacy LUMA JSON')}</h4><p>{tr(draft.language, 'Dành cho frame đã export từ phiên bản Studio trước.', 'For frames exported by an earlier Studio version.')}</p></div><input ref={fileInputRef} className="visually-hidden" type="file" accept="application/json,.json,.luma-frame.json" onChange={event => importFrame(event.target.files?.[0])} /><button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()}>{tr(draft.language, 'Chọn JSON', 'Choose JSON')}</button></div>

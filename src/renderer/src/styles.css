@@ -1767,8 +1767,8 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .frame-studio-launch .primary-button { align-self: center; justify-self: end; white-space: nowrap; }
 
 /* Frame Studio - compact operator tooling around one stable print canvas. */
-.settings-content:has(.frame-studio) { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: none; padding: 0; justify-content: stretch; justify-items: stretch; align-content: stretch; }
-.frame-studio { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; min-width: 0; min-height: 100%; overflow: hidden; background: var(--color-surface); }
+.frame-studio-view { position: fixed; z-index: 30; inset: 0; width: 100dvw; height: 100dvh; overflow: hidden; background: var(--color-surface); }
+.frame-studio { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; min-width: 0; height: 100%; min-height: 100%; overflow: hidden; background: var(--color-surface); }
 .frame-studio-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); padding: 1rem 1.25rem; border-bottom: 1px solid var(--color-line); }
 .frame-studio-header h3 { margin: .25rem 0 0; color: var(--color-text); font-family: var(--font-display); font-size: 1.65rem; letter-spacing: -.045em; }
 .frame-studio-actions { display: flex; gap: var(--space-2); }
@@ -1784,6 +1784,9 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .studio-tool-group { display: grid; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--color-line); }
 .studio-tool-group > strong, .studio-layer-list > strong { font-size: .72rem; }
 .studio-tool-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.studio-background-artwork > div { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.studio-background-artwork .studio-upload-button { flex: 1 1 10rem; }
+.studio-clear-background { flex: 0 0 auto; min-height: 2.65rem; padding: .55rem .75rem; color: var(--color-danger); background: transparent; border: 1px solid color-mix(in oklab, var(--color-danger) 35%, var(--color-line)); border-radius: var(--radius-sm); font-size: .68rem; font-weight: 800; }
 .studio-tool-buttons button { min-height: 2.65rem; padding: .5rem; color: var(--color-text-soft); background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-sm); font-size: .63rem; font-weight: 750; }
 .studio-tool-buttons button:hover, .studio-tool-buttons button.active { color: var(--color-accent-ink); background: var(--color-blue); border-color: var(--color-blue); }
 .studio-sticker-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .35rem; }

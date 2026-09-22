@@ -2,7 +2,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { parseFrameImport, type FrameFontAsset, type FrameImageLayer, type TemplateManifest } from '../templates'
 
 const MAX_PACK_BYTES = 24 * 1024 * 1024
-const assetMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf' }
+const assetMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf' }
 
 type PackManifest = Omit<TemplateManifest, 'layers' | 'fontAssets'> & { schemaVersion: 1; layers?: Array<Omit<FrameImageLayer, 'src'> & { src: string } | unknown>; fontAssets?: Array<Omit<FrameFontAsset, 'src'> & { src: string }> }
 
@@ -63,9 +63,9 @@ export function exportFramePack(template: TemplateManifest): Blob {
   let assetIndex = 0
   const layers = (template.layers ?? []).map(layer => {
     if (layer.type !== 'image' || !layer.src.startsWith('data:image/')) return layer
-    const match = /^data:image\/(png|jpeg|svg\+xml);base64,(.+)$/i.exec(layer.src)
+    const match = /^data:image\/(png|jpeg|webp|svg\+xml);base64,(.+)$/i.exec(layer.src)
     if (!match) return layer
-    const extension = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase() === 'svg+xml' ? 'svg' : 'png'
+    const extension = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase() === 'svg+xml' ? 'svg' : match[1].toLowerCase()
     const path = `assets/layer-${String(++assetIndex).padStart(2, '0')}.${extension}`
     const binary = atob(match[2])
     assets[path] = Uint8Array.from(binary, character => character.charCodeAt(0))

@@ -153,7 +153,7 @@ async function drawLayer(context: CanvasRenderingContext2D, layer: FrameLayer, c
   if (layer.type === 'image') {
     const image = await loadImage(layer.src)
     context.globalAlpha = layer.opacity
-    drawContain(context, image, 0, 0, width, height)
+    layer.fit === 'cover' ? drawCover(context, image, 0, 0, width, height) : drawContain(context, image, 0, 0, width, height)
   } else if (layer.type === 'text') {
     context.fillStyle = layer.color
     context.font = `${layer.italic ? 'italic ' : ''}${layer.fontWeight} ${Math.max(10, layer.fontSize * canvasWidth / 100)}px ${canvasFont(layer.fontFamily)}`
