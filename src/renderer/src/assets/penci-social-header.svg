@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 90">
+  <circle cx="34" cy="45" r="26" fill="#d7e0d6" stroke="#ffffff" stroke-width="5"/>
+  <circle cx="34" cy="38" r="9" fill="#718575"/><path d="M17 65c4-15 30-15 34 0" fill="#718575"/>
+  <text x="78" y="53" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="#303a31">Hoàng Minh_1102</text>
+  <rect x="640" y="25" width="130" height="40" rx="20" fill="#fff" stroke="#b8c5b9" stroke-width="3"/>
+  <text x="705" y="52" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#91a394">FOLLOW</text>
+  <circle cx="845" cy="28" r="4" fill="#68756a"/><circle cx="845" cy="45" r="4" fill="#68756a"/><circle cx="845" cy="62" r="4" fill="#68756a"/>
+</svg>

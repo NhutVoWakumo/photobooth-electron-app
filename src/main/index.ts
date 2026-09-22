@@ -66,6 +66,24 @@ function workspacePath(id: string): string {
   return join(workspaceDirectory(), `${id}.json`)
 }
 
+function settingsPath(): string {
+  return join(app.getPath('userData'), 'booth-settings.json')
+}
+
+async function loadSettings(): Promise<unknown | null> {
+  try { return JSON.parse(await readFile(settingsPath(), 'utf8')) }
+  catch { return null }
+}
+
+async function saveSettings(value: unknown): Promise<void> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid settings.')
+  await mkdir(app.getPath('userData'), { recursive: true })
+  const target = settingsPath()
+  const temporary = `${target}.${process.pid}-${randomUUID()}.tmp`
+  await writeFile(temporary, JSON.stringify(value), 'utf8')
+  await rename(temporary, target)
+}
+
 async function listWorkspaces(): Promise<StoredWorkspace[]> {
   const directory = workspaceDirectory()
   await mkdir(directory, { recursive: true })
@@ -154,6 +172,8 @@ app.whenReady().then(() => {
   ipcMain.handle('storage:list-workspaces', () => listWorkspaces())
   ipcMain.handle('storage:save-workspace', (_event, workspace: StoredWorkspace) => saveWorkspace(workspace))
   ipcMain.handle('storage:delete-workspace', (_event, id: string) => deleteWorkspace(id))
+  ipcMain.handle('storage:load-settings', () => loadSettings())
+  ipcMain.handle('storage:save-settings', (_event, value: unknown) => saveSettings(value))
   ipcMain.handle('output:export-image', (_event, input: { eventName: string; dataUrl: string }) => exportImage(input))
   createWindow()
 

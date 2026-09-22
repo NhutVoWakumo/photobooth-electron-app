@@ -6,6 +6,7 @@ import { BrandLogo } from './BrandLogo'
 import { FrameArtwork } from './FrameArtwork'
 import { getPhysicalPrintSize, parseFrameImport, templates, type TemplateManifest } from '../templates'
 import { importFramePack, makeDemoFramePack } from '../lib/framePack'
+import { referenceFrames } from '../referenceFrames'
 
 interface SettingsPanelProps {
   cameraDevices: CameraDevice[]
@@ -142,9 +143,16 @@ function FrameSettings({ draft, update, onOpenStudio }: { draft: BoothSettings; 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const packInputRef = useRef<HTMLInputElement>(null)
   const [importMessage, setImportMessage] = useState('')
-  const allFrames = [...templates, ...draft.customFrames]
-  const activeFrames = allFrames.filter(frame => draft.enabledFrameIds.includes(frame.id))
-  const archivedFrames = allFrames.filter(frame => !draft.enabledFrameIds.includes(frame.id))
+  const allFrames = [...templates, ...referenceFrames, ...draft.customFrames.filter(frame => !referenceFrames.some(reference => reference.id === frame.id))]
+  // An operator returns here to verify the frame they have just made. Surface
+  // custom work first (newest first) instead of burying it after every preset.
+  const newestCustomFirst = (left: TemplateManifest, right: TemplateManifest) => {
+    if (Boolean(left.builtIn) !== Boolean(right.builtIn)) return left.builtIn ? 1 : -1
+    if (!left.builtIn && !right.builtIn) return (right.createdAt ?? '').localeCompare(left.createdAt ?? '')
+    return 0
+  }
+  const activeFrames = allFrames.filter(frame => referenceFrames.some(reference => reference.id === frame.id) || draft.enabledFrameIds.includes(frame.id)).sort(newestCustomFirst)
+  const archivedFrames = allFrames.filter(frame => !referenceFrames.some(reference => reference.id === frame.id) && !draft.enabledFrameIds.includes(frame.id))
   const enabledCount = activeFrames.length
 
   const addImportedFrame = (frame: TemplateManifest) => {

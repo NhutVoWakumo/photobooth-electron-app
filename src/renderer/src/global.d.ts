@@ -19,6 +19,8 @@ interface Window {
     listWorkspaces: () => Promise<import('./types').BoothSession[]>
     saveWorkspace: (workspace: import('./types').BoothSession) => Promise<void>
     deleteWorkspace: (id: string) => Promise<void>
+    loadSettings: () => Promise<unknown | null>
+    saveSettings: (settings: unknown) => Promise<void>
     exportImage: (input: { eventName: string; dataUrl: string }) => Promise<{ outputPath: string }>
   }
 }

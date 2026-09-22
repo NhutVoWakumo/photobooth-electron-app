@@ -5,5 +5,7 @@ contextBridge.exposeInMainWorld('booth', {
   listWorkspaces: () => ipcRenderer.invoke('storage:list-workspaces'),
   saveWorkspace: (workspace: unknown) => ipcRenderer.invoke('storage:save-workspace', workspace),
   deleteWorkspace: (id: string) => ipcRenderer.invoke('storage:delete-workspace', id),
+  loadSettings: () => ipcRenderer.invoke('storage:load-settings'),
+  saveSettings: (value: unknown) => ipcRenderer.invoke('storage:save-settings', value),
   exportImage: (input: { eventName: string; dataUrl: string }) => ipcRenderer.invoke('output:export-image', input)
 })

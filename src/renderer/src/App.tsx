@@ -13,18 +13,25 @@ import { deleteStoredSession, listStoredSessions, saveStoredSession } from './li
 import { getTemplate, templates, type TemplateManifest } from './templates'
 import { defaultSettings, type BoothSession, type BoothSettings, type BoothStage, type SessionFrameSet } from './types'
 import { t } from './i18n'
+import { referenceFrames } from './referenceFrames'
 
 const storageKey = 'luma-booth-settings-v2'
 
-function readSettings(): BoothSettings {
+function normalizeSettings(value: unknown): BoothSettings {
   try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<BoothSettings>
-    const customFrames = Array.isArray(saved.customFrames) ? saved.customFrames.filter(frame => frame && typeof frame.id === 'string' && Array.isArray(frame.slots) && frame.theme) : []
+    const saved = ((typeof value === 'string' ? JSON.parse(value) : value) ?? {}) as Partial<BoothSettings>
+    const savedCustomFrames = Array.isArray(saved.customFrames) ? saved.customFrames.filter(frame => frame && typeof frame.id === 'string' && Array.isArray(frame.slots) && frame.theme) : []
+    const customFrames = [...referenceFrames, ...savedCustomFrames.filter(frame => !referenceFrames.some(reference => reference.id === frame.id))]
     const knownFrameIds = new Set([...templates, ...customFrames].map(frame => frame.id))
-    const enabledFrameIds = Array.isArray(saved.enabledFrameIds) ? saved.enabledFrameIds.filter((id): id is string => typeof id === 'string' && knownFrameIds.has(id)) : defaultSettings.enabledFrameIds
+    const storedEnabled = Array.isArray(saved.enabledFrameIds) ? saved.enabledFrameIds.filter((id): id is string => typeof id === 'string' && knownFrameIds.has(id)) : defaultSettings.enabledFrameIds
+    const enabledFrameIds = [...new Set([...storedEnabled, ...referenceFrames.map(frame => frame.id)])]
     const postCaptureReviewMs = saved.postCaptureReviewMs === 2000 ? 3000 : (saved.postCaptureReviewMs ?? defaultSettings.postCaptureReviewMs)
     return { ...defaultSettings, ...saved, postCaptureReviewMs, customFrames, enabledFrameIds: enabledFrameIds.length > 0 ? enabledFrameIds : defaultSettings.enabledFrameIds }
   } catch { return defaultSettings }
+}
+
+function readSettings(): BoothSettings {
+  return normalizeSettings(localStorage.getItem(storageKey) ?? '{}')
 }
 
 function newSession(index: number): BoothSession {
@@ -35,6 +42,7 @@ function newSession(index: number): BoothSession {
 export function App(): JSX.Element {
   const appRef = useRef<HTMLElement>(null)
   const [settings, setSettings] = useState<BoothSettings>(readSettings)
+  const [settingsReady, setSettingsReady] = useState(() => !window.booth)
   const [stage, setStage] = useState<BoothStage>('idle')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'general' | 'frames'>('general')
@@ -46,7 +54,17 @@ export function App(): JSX.Element {
   const [storageStatus, setStorageStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const camera = useCamera()
 
-  useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(settings)) }, [settings])
+  useEffect(() => {
+    if (!settingsReady) return
+    localStorage.setItem(storageKey, JSON.stringify(settings))
+    void window.booth?.saveSettings(settings)
+  }, [settings, settingsReady])
+  useEffect(() => {
+    if (!window.booth) return
+    void window.booth.loadSettings().then(saved => {
+      setSettings(normalizeSettings(saved ?? {}))
+    }).catch(() => undefined).finally(() => setSettingsReady(true))
+  }, [])
   useEffect(() => { void listStoredSessions().then(value => { setSessions(current => [...value, ...current.filter(session => !value.some(stored => stored.id === session.id))].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))); setStorageStatus('ready') }).catch(() => setStorageStatus('error')) }, [])
   useEffect(() => { window.scrollTo(0, 0) }, [stage, activeFrameId])
 

@@ -13,7 +13,7 @@ interface StickerIconProps {
 
 export function StickerIcon({ kind, color, secondaryColor, stroke, strokeWidth = 2, className, style }: StickerIconProps): JSX.Element {
   const common = { stroke, strokeWidth, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const, vectorEffect: 'non-scaling-stroke' as const }
-  return <svg className={className} style={style} viewBox="0 0 100 100" aria-hidden="true">
+  return <svg className={className} style={style} viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" shapeRendering="geometricPrecision" focusable="false" aria-hidden="true">
     {kind === 'heart' && <path d="M50 88C39 76 11 61 9 35 7 14 33 7 50 29 67 7 93 14 91 35 89 61 61 76 50 88Z" fill={color} {...common} />}
     {kind === 'sparkle' && <><path d="M50 5 61 37 94 50 61 63 50 95 39 63 6 50 39 37Z" fill={color} {...common} /><circle cx="78" cy="20" r="7" fill={secondaryColor} {...common} /></>}
     {kind === 'flower' && <><g fill={color} {...common}>{[0, 72, 144, 216, 288].map(angle => <ellipse key={angle} cx="50" cy="25" rx="14" ry="23" transform={`rotate(${angle} 50 50)`} />)}</g><circle cx="50" cy="50" r="15" fill={secondaryColor} {...common} /></>}

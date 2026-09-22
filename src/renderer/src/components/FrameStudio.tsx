@@ -17,7 +17,7 @@ interface FrameStudioProps {
 
 type Selection = { kind: 'slot' | 'layer'; id: string } | null
 type CanvasInteraction = {
-  mode: 'move' | 'resize'
+  mode: 'move' | 'resize' | 'artwork-pan'
   target: Exclude<Selection, null>
   startX: number
   startY: number
@@ -25,8 +25,18 @@ type CanvasInteraction = {
   y: number
   width: number
   height: number
+  focusX?: number
+  focusY?: number
+  groupOrigins?: Record<string, { x: number; y: number }>
 }
 type CanvasPreset = 'strip' | 'portrait' | 'landscape' | 'square'
+type SlotArrangement = 'stack' | 'tiles' | 'split'
+
+const artworkFocusPoints = [
+  { x: 0, y: 0, label: 'Top left' }, { x: 50, y: 0, label: 'Top' }, { x: 100, y: 0, label: 'Top right' },
+  { x: 0, y: 50, label: 'Left' }, { x: 50, y: 50, label: 'Center' }, { x: 100, y: 50, label: 'Right' },
+  { x: 0, y: 100, label: 'Bottom left' }, { x: 50, y: 100, label: 'Bottom' }, { x: 100, y: 100, label: 'Bottom right' }
+]
 
 const presetMap: Record<CanvasPreset, { width: number; height: number; label: string; printLabel: string }> = {
   strip: { width: 600, height: 1800, label: '2 × 6 in', printLabel: '2 × 6 in strip' },
@@ -51,10 +61,9 @@ function newDocument(): TemplateManifest {
     output: { width: presetMap.portrait.width, height: presetMap.portrait.height, ppi: 300 },
     background: { kind: 'solid', color: frameThemes[0].paper, secondaryColor: frameThemes[0].slotLight, scale: 8, angle: 45 },
     slots: [{ id: `slot-${crypto.randomUUID()}`, x: .1, y: .16, width: .8, height: .62, shape: 'rounded', radius: .04, fit: 'contain', zIndex: 10 }],
-    layers: [
-      { id: `text-${crypto.randomUUID()}`, type: 'text', x: .1, y: .055, width: .8, height: .06, text: 'LUMA BOOTH', color: frameThemes[0].ink, fontSize: 4.5, fontWeight: 800, align: 'center', zIndex: 30 },
-      { id: `text-${crypto.randomUUID()}`, type: 'text', x: .1, y: .91, width: .8, height: .04, text: 'A MOMENT, KEPT', color: frameThemes[0].accent, fontSize: 2.5, fontWeight: 700, align: 'center', zIndex: 30 }
-    ],
+    // A new frame is a document, not a branded starter template. Designers
+    // decide whether it needs a title, caption, logo, or no text at all.
+    layers: [],
     theme: { ...frameThemes[0] },
     createdAt: new Date().toISOString()
   }
@@ -138,6 +147,8 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
   const selectedLayer = selection?.kind === 'layer' ? (draft.layers ?? []).find(item => item.id === selection.id) : undefined
   const selectedItem = selectedSlot ?? selectedLayer
   const hasBackgroundArtwork = (draft.layers ?? []).some(layer => layer.type === 'image' && layer.zIndex <= 0)
+  const lowerPhotoLayers = (draft.layers ?? []).filter(layer => layer.zIndex < 10)
+  const upperPhotoLayers = (draft.layers ?? []).filter(layer => layer.zIndex >= 10)
   const preset = useMemo(() => Object.entries(presetMap).find(([, value]) => value.width === draft.output.width && value.height === draft.output.height)?.[0] ?? 'custom', [draft.output])
 
   const updateSlot = (id: string, patch: Partial<FrameSlot>) => setDraft(current => ({ ...current, slots: current.slots.map(slot => slot.id === id ? fitItem({ ...slot, ...patch }) : slot) }))
@@ -147,13 +158,41 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     return 'x' in next ? fitItem(next) : next
   }) }))
 
+  const groupSelectedWithNext = () => {
+    if (!selection || !selectedItem) return
+    const groupId = selectedItem.groupId ?? `group-${crypto.randomUUID()}`
+    if (selection.kind === 'slot') {
+      const index = draft.slots.findIndex(slot => slot.id === selection.id)
+      const sibling = draft.slots[index + 1] ?? draft.slots[index - 1]
+      if (!sibling) return setStatus(tr(language, 'Cần ít nhất hai đối tượng để nhóm.', 'Select an object with a sibling to create a group.'))
+      setDraft(current => ({ ...current, slots: current.slots.map(slot => slot.id === selection.id || slot.id === sibling.id ? { ...slot, groupId } : slot) }))
+    } else {
+      const layers = draft.layers ?? []
+      const index = layers.findIndex(layer => layer.id === selection.id)
+      const sibling = layers[index + 1] ?? layers[index - 1]
+      if (!sibling) return setStatus(tr(language, 'Cần ít nhất hai đối tượng để nhóm.', 'Select an object with a sibling to create a group.'))
+      setDraft(current => ({ ...current, layers: (current.layers ?? []).map(layer => layer.id === selection.id || layer.id === sibling.id ? { ...layer, groupId } : layer) }))
+    }
+    setStatus(tr(language, 'Đã nhóm đối tượng với phần tử kế bên. Kéo một phần tử để di chuyển cả nhóm.', 'Grouped with the adjacent object. Drag one member to move the group.'))
+  }
+
+  const ungroupSelected = () => {
+    if (!selection || !selectedItem?.groupId) return
+    const groupId = selectedItem.groupId
+    setDraft(current => ({ ...current, slots: current.slots.map(slot => slot.groupId === groupId ? { ...slot, groupId: undefined } : slot), layers: (current.layers ?? []).map(layer => layer.groupId === groupId ? { ...layer, groupId: undefined } : layer) }))
+  }
+
   const addSlot = () => {
     const slot: FrameSlot = { id: `slot-${crypto.randomUUID()}`, x: .16, y: .18, width: .68, height: .28, shape: 'rounded', radius: .05, fit: 'contain', zIndex: 10 }
     setDraft(current => ({ ...current, slots: [...current.slots, slot], requiredSlots: current.slots.length + 1 }))
     setSelection({ kind: 'slot', id: slot.id })
   }
   const addText = () => {
-    const layer: FrameLayer = { id: `text-${crypto.randomUUID()}`, type: 'text', x: .1, y: .06, width: .8, height: .08, text: 'YOUR EVENT', color: draft.theme.ink, fontSize: 5, fontWeight: 800, align: 'center', zIndex: 30 }
+    // Never drop every new line of copy on the document title. It is a useful
+    // default for a blank canvas, but a frustrating surprise in real designs.
+    const existingTextCount = (draft.layers ?? []).filter(layer => layer.type === 'text').length
+    const y = clamp(.13 + existingTextCount * .1, .13, .78)
+    const layer: FrameLayer = { id: `text-${crypto.randomUUID()}`, type: 'text', x: .1, y, width: .8, height: .08, text: 'YOUR EVENT', color: draft.theme.ink, fontSize: 5, fontWeight: 800, align: 'center', zIndex: 30 }
     addLayer(layer)
   }
   const addShape = () => {
@@ -213,6 +252,33 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     setDraft(current => ({ ...current, output: { width: next.width, height: next.height, ppi: 300 }, printLabel: next.printLabel }))
   }
 
+  // A designer should be able to establish a usable composition before they
+  // ever need precision controls. Dragging remains the way to art-direct it.
+  const arrangeSlots = (arrangement: SlotArrangement) => {
+    const count = draft.slots.length
+    if (count === 0) return
+    const gutter = .035
+    const inset = .08
+    const usableWidth = 1 - inset * 2
+    const usableHeight = 1 - inset * 2
+    const slots = draft.slots.map((slot, index) => {
+      if (arrangement === 'split' && count === 2) {
+        return { ...slot, x: index === 0 ? inset : .515, y: .17, width: .405, height: .66 }
+      }
+      if (arrangement === 'tiles') {
+        const columns = count === 1 ? 1 : 2
+        const rows = Math.ceil(count / columns)
+        const width = (usableWidth - gutter * (columns - 1)) / columns
+        const height = (usableHeight - gutter * (rows - 1)) / rows
+        return { ...slot, x: inset + (index % columns) * (width + gutter), y: inset + Math.floor(index / columns) * (height + gutter), width, height }
+      }
+      const height = (usableHeight - gutter * (count - 1)) / count
+      return { ...slot, x: inset, y: inset + index * (height + gutter), width: usableWidth, height }
+    })
+    setDraft(current => ({ ...current, slots }))
+    setStatus(tr(language, 'Đã sắp ô ảnh. Bạn có thể kéo từng ô trực tiếp trên board để tinh chỉnh.', 'Photo slots are arranged. Drag any slot on the board to fine-tune it.'))
+  }
+
   const changeZoom = (amount: number) => setZoom(current => clamp(current + amount, 50, 175))
   const handleCanvasWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     if (!event.ctrlKey && !event.metaKey) return
@@ -230,8 +296,20 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     setSelection(next)
     const point = pointerPosition(event)
     const item = next?.kind === 'slot' ? draft.slots.find(candidate => candidate.id === next.id) : (draft.layers ?? []).find(candidate => candidate.id === next?.id)
-    if (!item || !('width' in item) || item.locked) return
-    interactionRef.current = { mode: 'move', target: next, startX: point.x, startY: point.y, x, y, width: item.width, height: item.height }
+    if (!item || !('width' in item)) return
+    // Background art is intentionally locked against accidental resize, but it
+    // must still be directly art-directable: dragging pans its crop.
+    if (next.kind === 'layer' && 'type' in item && item.type === 'image' && (item.zIndex ?? 20) <= 0) {
+      interactionRef.current = { mode: 'artwork-pan', target: next, startX: point.x, startY: point.y, x, y, width: item.width, height: item.height, focusX: item.focusX ?? 50, focusY: item.focusY ?? 50 }
+    } else {
+      if (item.locked) return
+      const groupId = item.groupId
+      const groupOrigins = groupId ? Object.fromEntries([
+        ...draft.slots.filter(slot => slot.groupId === groupId).map(slot => [slot.id, { x: slot.x, y: slot.y }] as const),
+        ...(draft.layers ?? []).filter(layer => layer.groupId === groupId && 'x' in layer).map(layer => { const positioned = layer as Extract<FrameLayer, { x: number; y: number }>; return [layer.id, { x: positioned.x, y: positioned.y }] as const })
+      ]) : undefined
+      interactionRef.current = { mode: 'move', target: next, startX: point.x, startY: point.y, x, y, width: item.width, height: item.height, groupOrigins }
+    }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const startResize = (event: ReactPointerEvent, next: Exclude<Selection, null>, item: { x: number; y: number; width: number; height: number; locked?: boolean }) => {
@@ -248,9 +326,22 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     const point = pointerPosition(event)
     const deltaX = point.x - interaction.startX
     const deltaY = point.y - interaction.startY
+    if (interaction.mode === 'artwork-pan') {
+      updateLayer(interaction.target.id, { focusX: clamp((interaction.focusX ?? 50) - deltaX * 180, 0, 100), focusY: clamp((interaction.focusY ?? 50) - deltaY * 180, 0, 100) })
+      return
+    }
     const patch = interaction.mode === 'move'
       ? { x: clamp(interaction.x + deltaX, 0, 1 - interaction.width), y: clamp(interaction.y + deltaY, 0, 1 - interaction.height) }
       : { width: clamp(interaction.width + deltaX, .04, 1 - interaction.x), height: clamp(interaction.height + deltaY, .04, 1 - interaction.y) }
+    if (interaction.mode === 'move') {
+      const currentItem = interaction.target.kind === 'slot' ? draft.slots.find(slot => slot.id === interaction.target.id) : (draft.layers ?? []).find(layer => layer.id === interaction.target.id)
+      const groupId = currentItem?.groupId
+      if (groupId) {
+        const origins = interaction.groupOrigins ?? {}
+        setDraft(current => ({ ...current, slots: current.slots.map(slot => slot.groupId === groupId && origins[slot.id] ? { ...slot, x: clamp(origins[slot.id].x + deltaX, 0, 1 - slot.width), y: clamp(origins[slot.id].y + deltaY, 0, 1 - slot.height) } : slot), layers: (current.layers ?? []).map(layer => 'x' in layer && layer.groupId === groupId && origins[layer.id] ? fitItem({ ...layer, x: origins[layer.id].x + deltaX, y: origins[layer.id].y + deltaY }) : layer) }))
+        return
+      }
+    }
     interaction.target.kind === 'slot' ? updateSlot(interaction.target.id, patch) : updateLayer(interaction.target.id, patch)
   }
   const stopMove = () => { interactionRef.current = null; drawingLayerRef.current = null }
@@ -300,7 +391,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
       const sticker = assetPlacementRef.current === 'sticker'
       const src = String(reader.result)
       if (assetPlacementRef.current === 'background') {
-        const layer: FrameLayer = { id: `background-artwork-${crypto.randomUUID()}`, type: 'image', x: 0, y: 0, width: 1, height: 1, src, opacity: 1, fit: 'cover', zIndex: 0, locked: true }
+        const layer: FrameLayer = { id: `background-artwork-${crypto.randomUUID()}`, type: 'image', x: 0, y: 0, width: 1, height: 1, src, opacity: 1, fit: 'cover', focusX: 50, focusY: 50, zIndex: 0, locked: true }
         setDraft(current => ({ ...current, layers: [...(current.layers ?? []).filter(item => item.type !== 'image' || item.zIndex > 0), layer] }))
         setSelection({ kind: 'layer', id: layer.id })
         setStatus(tr(language, 'Đã thay ảnh nền. Ảnh được crop theo khổ in và nằm dưới mọi ô ảnh.', 'Background artwork replaced. It crops to the print size and stays below every photo slot.'))
@@ -378,6 +469,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
         <div className="studio-dimensions"><label>{tr(language, 'Rộng (px)', 'Width (px)')}<input type="number" min="300" max="6000" step="10" value={draft.output.width} onChange={event => setDraft(current => ({ ...current, output: { ...current.output, width: Number(event.target.value) }, printLabel: `Custom ${event.target.value} × ${current.output.height}px` }))} /></label><label>{tr(language, 'Cao (px)', 'Height (px)')}<input type="number" min="300" max="6000" step="10" value={draft.output.height} onChange={event => setDraft(current => ({ ...current, output: { ...current.output, height: Number(event.target.value) }, printLabel: `Custom ${current.output.width} × ${event.target.value}px` }))} /></label></div>
         <label>PPI<input type="number" min="72" max="600" step="1" value={draft.output.ppi} onChange={event => setDraft(current => ({ ...current, output: { ...current.output, ppi: clamp(Number(event.target.value), 72, 600) } }))} /><small>{tr(language, 'Dùng 300 PPI cho máy in ảnh tiêu chuẩn.', 'Use 300 PPI for standard photo printing.')}</small></label>
         <div className="studio-tool-group"><strong>{tr(language, 'Thêm vào canvas', 'Add to canvas')}</strong><div className="studio-tool-buttons"><button type="button" onClick={addSlot}>+ {tr(language, 'Ô ảnh', 'Photo')}</button><button type="button" onClick={addText}>+ {tr(language, 'Chữ', 'Text')}</button><button type="button" onClick={addShape}>+ {tr(language, 'Hình', 'Shape')}</button><button type="button" onClick={() => chooseAsset('overlay')}>+ {tr(language, 'Overlay / logo', 'Overlay / logo')}</button><button className={drawing ? 'active' : ''} type="button" aria-pressed={drawing} onClick={() => setDrawing(value => !value)}>{tr(language, 'Vẽ tự do', 'Draw')}</button></div></div>
+        <div className="studio-tool-group studio-arrange-group"><strong>{tr(language, 'Sắp ô ảnh nhanh', 'Quick photo layout')}</strong><small>{tr(language, 'Chọn bố cục, rồi kéo trực tiếp ô ảnh trên board để căn theo ý bạn. Không cần nhập tọa độ.', 'Pick a layout, then drag photo slots on the board to art-direct it. No coordinates required.')}</small><div className="studio-arrange-buttons"><button type="button" onClick={() => arrangeSlots('stack')}><i className="arrange-stack" /><span>{tr(language, 'Xếp dọc', 'Stack')}</span></button><button type="button" onClick={() => arrangeSlots('tiles')}><i className="arrange-tiles" /><span>{tr(language, 'Ô lưới', 'Tiles')}</span></button><button type="button" disabled={draft.slots.length !== 2} onClick={() => arrangeSlots('split')}><i className="arrange-split" /><span>{tr(language, 'Chia đôi', 'Split')}</span></button></div></div>
         <div className="studio-tool-group studio-background-artwork"><strong>{tr(language, 'Ảnh nền artwork', 'Background artwork')}</strong><small>{tr(language, 'Một ảnh phủ toàn khổ in, giống layer nền của Penci. Ảnh được crop vừa khung và nằm dưới ảnh khách.', 'One image fills the whole print, like Penci’s background layer. It crops to the canvas and stays behind guest photos.')}</small><div><button className="studio-upload-button" type="button" onClick={() => chooseAsset('background')}>{hasBackgroundArtwork ? tr(language, 'Thay ảnh nền', 'Replace background') : tr(language, 'Upload ảnh nền', 'Upload background')}</button>{hasBackgroundArtwork && <button className="studio-clear-background" type="button" onClick={removeBackgroundArtwork}>{tr(language, 'Gỡ nền', 'Remove')}</button>}</div></div>
         <div className="studio-tool-group"><strong>{tr(language, 'Sticker', 'Stickers')}</strong><div className="studio-sticker-grid">{stickerChoices.map(sticker => <button type="button" key={sticker} aria-label={`${tr(language, 'Thêm sticker', 'Add sticker')} ${sticker}`} title={sticker} onClick={() => addSticker(sticker)}><StickerIcon kind={sticker} color={draft.theme.ink} secondaryColor={draft.theme.accent} stroke={draft.theme.ink} strokeWidth={1.5} /></button>)}</div><button className="studio-upload-button" type="button" onClick={addPersonalSticker}>{tr(language, 'Upload sticker riêng', 'Upload personal sticker')}</button></div>
         <input ref={designRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg" onChange={handleDesignAsset} />
@@ -403,8 +495,9 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
         <div ref={canvasViewportRef} className="studio-canvas-wrap" onWheel={handleCanvasWheel}>
           <div className="studio-canvas-zoom-stage" style={{ width: fitCanvasWidth ? `${fitCanvasWidth * zoom / 100}px` : undefined, aspectRatio: `${draft.output.width}/${draft.output.height}` }}>
             <div ref={canvasRef} className={`studio-canvas ${drawing ? 'drawing' : ''}`} style={{ '--studio-ratio': draft.output.width / draft.output.height, aspectRatio: `${draft.output.width}/${draft.output.height}`, background: backgroundCss(draft) } as CSSProperties} onPointerDown={drawStart} onPointerMove={event => drawing ? drawMove(event) : moveSelected(event)} onPointerUp={stopMove} onPointerCancel={stopMove}>
+              {lowerPhotoLayers.map(layer => <StudioLayer key={layer.id} layer={layer} selected={selection?.id === layer.id} editing={editingTextId === layer.id} onPointerDown={event => layer.type !== 'freehand' && startMove(event, { kind: 'layer', id: layer.id }, layer.x, layer.y)} onResize={event => layer.type !== 'freehand' && startResize(event, { kind: 'layer', id: layer.id }, layer)} onSelect={() => setSelection({ kind: 'layer', id: layer.id })} onEdit={() => layer.type === 'text' && setEditingTextId(layer.id)} onTextChange={text => layer.type === 'text' && updateLayer(layer.id, { text })} onFinishEdit={() => setEditingTextId(null)} />)}
               {draft.slots.map((slot, index) => <button key={slot.id} type="button" className={`studio-canvas-item studio-slot ${selection?.id === slot.id ? 'selected' : ''} shape-${slot.shape ?? 'rectangle'}`} style={{ ...itemStyle(slot), clipPath: shapeClipPath(slot.shape), borderRadius: shapeBorderRadius(slot.shape, slot.radius), display: slot.hidden ? 'none' : undefined, boxShadow: slot.strokeWidth ? `inset 0 0 0 ${slot.strokeWidth}px ${slot.stroke ?? draft.theme.ink}` : undefined }} onPointerDown={event => startMove(event, { kind: 'slot', id: slot.id }, slot.x, slot.y)}><span>{index + 1}</span>{selection?.id === slot.id && !slot.locked && <i className="studio-resize-handle" onPointerDown={event => startResize(event, { kind: 'slot', id: slot.id }, slot)} />}</button>)}
-              {(draft.layers ?? []).map(layer => <StudioLayer key={layer.id} layer={layer} selected={selection?.id === layer.id} editing={editingTextId === layer.id} onPointerDown={event => layer.type !== 'freehand' && startMove(event, { kind: 'layer', id: layer.id }, layer.x, layer.y)} onResize={event => layer.type !== 'freehand' && startResize(event, { kind: 'layer', id: layer.id }, layer)} onSelect={() => setSelection({ kind: 'layer', id: layer.id })} onEdit={() => layer.type === 'text' && setEditingTextId(layer.id)} onTextChange={text => layer.type === 'text' && updateLayer(layer.id, { text })} onFinishEdit={() => setEditingTextId(null)} />)}
+              {upperPhotoLayers.map(layer => <StudioLayer key={layer.id} layer={layer} selected={selection?.id === layer.id} editing={editingTextId === layer.id} onPointerDown={event => layer.type !== 'freehand' && startMove(event, { kind: 'layer', id: layer.id }, layer.x, layer.y)} onResize={event => layer.type !== 'freehand' && startResize(event, { kind: 'layer', id: layer.id }, layer)} onSelect={() => setSelection({ kind: 'layer', id: layer.id })} onEdit={() => layer.type === 'text' && setEditingTextId(layer.id)} onTextChange={text => layer.type === 'text' && updateLayer(layer.id, { text })} onFinishEdit={() => setEditingTextId(null)} />)}
             </div>
           </div>
         </div>
@@ -414,15 +507,15 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
         <div className="studio-inspector-title"><strong>{selectedSlot ? tr(language, 'Ô ảnh', 'Photo slot') : selectedLayer ? tr(language, 'Layer', 'Layer') : tr(language, 'Chưa chọn', 'Nothing selected')}</strong>{selectedItem && <button type="button" onClick={removeSelected}>{tr(language, 'Xóa', 'Delete')}</button>}</div>
         {selectedItem && 'x' in selectedItem && <><div className="studio-number-grid"><NumberField label="X" value={selectedItem.x} onChange={value => selection?.kind === 'slot' ? updateSlot(selection.id, { x: value }) : updateLayer(selection!.id, { x: value })} /><NumberField label="Y" value={selectedItem.y} onChange={value => selection?.kind === 'slot' ? updateSlot(selection.id, { y: value }) : updateLayer(selection!.id, { y: value })} /><NumberField label="W" value={selectedItem.width} onChange={value => selection?.kind === 'slot' ? updateSlot(selection.id, { width: value }) : updateLayer(selection!.id, { width: value })} /><NumberField label="H" value={selectedItem.height} onChange={value => selection?.kind === 'slot' ? updateSlot(selection.id, { height: value }) : updateLayer(selection!.id, { height: value })} /></div></>}
         {selectedItem && 'x' in selectedItem && <label>{tr(language, 'Xoay', 'Rotation')}<input type="range" min="-180" max="180" step="1" value={selectedItem.rotation ?? 0} onChange={event => selection?.kind === 'slot' ? updateSlot(selection.id, { rotation: Number(event.target.value) }) : updateLayer(selection!.id, { rotation: Number(event.target.value) })} /></label>}
-        {selectedItem && <><div className="studio-layer-order"><button type="button" onClick={() => shiftSelected(-1)}>{tr(language, 'Đưa xuống', 'Send back')}</button><button type="button" onClick={() => shiftSelected(1)}>{tr(language, 'Đưa lên', 'Bring forward')}</button><button type="button" onClick={duplicateSelected}>{tr(language, 'Nhân đôi', 'Duplicate')}</button><button type="button" onClick={() => alignSelected('horizontal')}>{tr(language, 'Căn giữa ngang', 'Center X')}</button><button type="button" onClick={() => alignSelected('vertical')}>{tr(language, 'Căn giữa dọc', 'Center Y')}</button><button type="button" onClick={() => toggleSelectedState('locked')}>{selectedItem.locked ? tr(language, 'Mở khoá', 'Unlock') : tr(language, 'Khoá', 'Lock')}</button><button type="button" onClick={() => toggleSelectedState('hidden')}>{selectedItem.hidden ? tr(language, 'Hiện', 'Show') : tr(language, 'Ẩn', 'Hide')}</button></div></>}
+        {selectedItem && <><div className="studio-layer-order"><button type="button" onClick={() => shiftSelected(-1)}>{tr(language, 'Đưa xuống', 'Send back')}</button><button type="button" onClick={() => shiftSelected(1)}>{tr(language, 'Đưa lên', 'Bring forward')}</button><button type="button" onClick={duplicateSelected}>{tr(language, 'Nhân đôi', 'Duplicate')}</button><button type="button" onClick={() => alignSelected('horizontal')}>{tr(language, 'Căn giữa ngang', 'Center X')}</button><button type="button" onClick={() => alignSelected('vertical')}>{tr(language, 'Căn giữa dọc', 'Center Y')}</button><button type="button" onClick={() => toggleSelectedState('locked')}>{selectedItem.locked ? tr(language, 'Mở khoá', 'Unlock') : tr(language, 'Khoá', 'Lock')}</button><button type="button" onClick={() => toggleSelectedState('hidden')}>{selectedItem.hidden ? tr(language, 'Hiện', 'Show') : tr(language, 'Ẩn', 'Hide')}</button></div><div className="studio-group-actions"><button type="button" onClick={groupSelectedWithNext}>{tr(language, 'Nhóm với phần kế', 'Group with next')}</button>{selectedItem.groupId && <button type="button" onClick={ungroupSelected}>{tr(language, 'Bỏ nhóm', 'Ungroup')}</button>}</div></>}
         {selectedSlot && <><label>{tr(language, 'Hình dạng', 'Shape')}<select value={selectedSlot.shape ?? 'rectangle'} onChange={event => updateSlot(selectedSlot.id, { shape: event.target.value as FrameSlotShape })}>{shapeChoices.map(shape => <option key={shape.value} value={shape.value}>{shape.label}</option>)}</select></label>{selectedSlot.shape === 'rounded' && <label>{tr(language, 'Bo góc', 'Corner radius')}<input type="range" min="0" max=".5" step=".01" value={selectedSlot.radius ?? .08} onChange={event => updateSlot(selectedSlot.id, { radius: Number(event.target.value) })} /><small>{Math.round((selectedSlot.radius ?? .08) * 100)}%</small></label>}<label>{tr(language, 'Cách đặt ảnh', 'Photo fitting')}<select value={selectedSlot.fit ?? 'contain'} onChange={event => updateSlot(selectedSlot.id, { fit: event.target.value as 'cover' | 'contain' })}><option value="contain">{tr(language, 'Giữ toàn bộ ảnh', 'Fit whole photo')}</option><option value="cover">{tr(language, 'Lấp đầy khung (có thể cắt)', 'Fill frame (may crop)')}</option></select></label><label>{tr(language, 'Màu viền ảnh', 'Photo border')}<input type="color" value={selectedSlot.stroke ?? draft.theme.paper} onChange={event => updateSlot(selectedSlot.id, { stroke: event.target.value })} /></label><label>{tr(language, 'Độ dày viền', 'Border width')}<input type="range" min="0" max="20" step="1" value={selectedSlot.strokeWidth ?? 0} onChange={event => updateSlot(selectedSlot.id, { strokeWidth: Number(event.target.value) })} /></label></>}
         {selectedLayer?.type === 'text' && <><button className="studio-edit-text" type="button" onClick={() => setEditingTextId(selectedLayer.id)}>{tr(language, 'Sửa chữ ngay trên board', 'Edit text on board')}</button><label>{tr(language, 'Kiểu chữ', 'Typeface')}<div className="studio-font-picker">{([{ id: 'display', name: 'Display' }, { id: 'sans', name: 'Sans' }, { id: 'serif', name: 'Serif' }, { id: 'script', name: 'Script' }, { id: 'mono', name: 'Mono' }, ...(draft.fontAssets ?? []).map(font => ({ id: font.family, name: font.name }))] as Array<{ id: string; name: string }>).map(font => <button key={font.id} type="button" className={selectedLayer.fontFamily === font.id ? 'active' : ''} style={{ fontFamily: studioFont(font.id) }} onClick={() => updateLayer(selectedLayer.id, { fontFamily: font.id })}>{font.name}</button>)}</div></label><label>{tr(language, 'Cỡ chữ', 'Text size')}<input type="range" min="1" max="24" step=".5" value={selectedLayer.fontSize} onChange={event => updateLayer(selectedLayer.id, { fontSize: Number(event.target.value) })} /></label><label>{tr(language, 'Khoảng cách chữ', 'Letter spacing')}<input type="range" min="-.08" max=".4" step=".01" value={selectedLayer.letterSpacing ?? 0} onChange={event => updateLayer(selectedLayer.id, { letterSpacing: Number(event.target.value) })} /></label><label className="studio-check"><input type="checkbox" checked={selectedLayer.italic ?? false} onChange={event => updateLayer(selectedLayer.id, { italic: event.target.checked })} />{tr(language, 'Chữ nghiêng', 'Italic')}</label><ColorField label={tr(language, 'Màu chữ', 'Text color')} value={selectedLayer.color} onChange={color => updateLayer(selectedLayer.id, { color })} /><ColorField label={tr(language, 'Màu outline', 'Outline color')} value={selectedLayer.stroke ?? draft.theme.paper} onChange={color => updateLayer(selectedLayer.id, { stroke: color })} /><label>{tr(language, 'Độ dày outline', 'Outline width')}<input type="range" min="0" max="5" step=".25" value={selectedLayer.strokeWidth ?? 0} onChange={event => updateLayer(selectedLayer.id, { strokeWidth: Number(event.target.value) })} /></label><label>{tr(language, 'Độ mờ bóng', 'Shadow blur')}<input type="range" min="0" max="20" step="1" value={selectedLayer.shadowBlur ?? 0} onChange={event => updateLayer(selectedLayer.id, { shadowBlur: Number(event.target.value), shadowColor: selectedLayer.shadowColor ?? '#000000' })} /></label></>}
         {selectedLayer?.type === 'shape' && <><label>{tr(language, 'Màu hình', 'Shape color')}<input type="color" value={selectedLayer.fill} onChange={event => updateLayer(selectedLayer.id, { fill: event.target.value })} /></label><label>{tr(language, 'Màu viền', 'Border color')}<input type="color" value={selectedLayer.stroke === 'transparent' ? draft.theme.ink : selectedLayer.stroke} onChange={event => updateLayer(selectedLayer.id, { stroke: event.target.value })} /></label><label>{tr(language, 'Độ dày viền', 'Border width')}<input type="range" min="0" max="12" step="1" value={selectedLayer.strokeWidth} onChange={event => updateLayer(selectedLayer.id, { strokeWidth: Number(event.target.value) })} /></label><label>{tr(language, 'Hình dạng', 'Shape')}<select value={selectedLayer.shape} onChange={event => updateLayer(selectedLayer.id, { shape: event.target.value as FrameSlotShape })}>{shapeChoices.map(shape => <option key={shape.value} value={shape.value}>{shape.label}</option>)}</select></label></>}
         {selectedLayer?.type === 'sticker' && <><label>{tr(language, 'Sticker', 'Sticker')}<select value={selectedLayer.sticker} onChange={event => updateLayer(selectedLayer.id, { sticker: event.target.value as FrameStickerKind })}>{stickerChoices.map(sticker => <option key={sticker} value={sticker}>{sticker}</option>)}</select></label><label>{tr(language, 'Màu sticker', 'Sticker color')}<input type="color" value={selectedLayer.color} onChange={event => updateLayer(selectedLayer.id, { color: event.target.value })} /></label><label>{tr(language, 'Màu bóng', 'Offset color')}<input type="color" value={selectedLayer.secondaryColor} onChange={event => updateLayer(selectedLayer.id, { secondaryColor: event.target.value })} /></label><label>{tr(language, 'Màu viền', 'Outline color')}<input type="color" value={selectedLayer.stroke} onChange={event => updateLayer(selectedLayer.id, { stroke: event.target.value })} /></label></>}
-        {selectedLayer?.type === 'image' && <><label>{tr(language, 'Cách đặt artwork', 'Artwork fitting')}<select value={selectedLayer.fit ?? 'contain'} onChange={event => updateLayer(selectedLayer.id, { fit: event.target.value as 'cover' | 'contain' })}><option value="cover">{tr(language, 'Phủ kín khung (crop)', 'Fill canvas (crop)')}</option><option value="contain">{tr(language, 'Giữ toàn bộ ảnh', 'Fit whole artwork')}</option></select></label><label>{tr(language, 'Độ trong suốt', 'Opacity')}<input type="range" min=".1" max="1" step=".05" value={selectedLayer.opacity} onChange={event => updateLayer(selectedLayer.id, { opacity: Number(event.target.value) })} /></label></>}
+        {selectedLayer?.type === 'image' && <><label>{tr(language, 'Cách đặt artwork', 'Artwork fitting')}<select value={selectedLayer.fit ?? 'contain'} onChange={event => updateLayer(selectedLayer.id, { fit: event.target.value as 'cover' | 'contain' })}><option value="cover">{tr(language, 'Phủ kín khung (crop)', 'Fill canvas (crop)')}</option><option value="contain">{tr(language, 'Giữ toàn bộ ảnh', 'Fit whole artwork')}</option></select></label><div className="studio-artwork-pan"><strong>{tr(language, 'Căn ảnh trực tiếp', 'Direct artwork positioning')}</strong><small>{tr(language, 'Chọn ảnh nền trên board rồi kéo để căn phần trời, cỏ hoặc hoạ tiết. Dùng thanh Zoom để phóng to chi tiết.', 'Select the background on the board and drag to position sky, grass, or artwork. Use Zoom to enlarge details.')}</small><label>{tr(language, 'Ngang', 'Horizontal')}<input type="range" min="0" max="100" value={selectedLayer.focusX ?? 50} onChange={event => updateLayer(selectedLayer.id, { focusX: Number(event.target.value) })} /></label><label>{tr(language, 'Dọc', 'Vertical')}<input type="range" min="0" max="100" value={selectedLayer.focusY ?? 50} onChange={event => updateLayer(selectedLayer.id, { focusY: Number(event.target.value) })} /></label><label>{tr(language, 'Phóng to artwork', 'Artwork zoom')}<input type="range" min="1" max="3" step=".01" value={selectedLayer.artworkScale ?? 1} onChange={event => updateLayer(selectedLayer.id, { artworkScale: Number(event.target.value) })} /></label><button type="button" className="studio-artwork-reset" onClick={() => updateLayer(selectedLayer.id, { focusX: 50, focusY: 50, artworkScale: 1, fit: 'cover' })}>{tr(language, 'Căn lại ảnh nền', 'Reset background fit')}</button></div><div className="studio-artwork-focus"><span>{tr(language, 'Điểm crop nhanh', 'Quick crop focus')}</span><div>{artworkFocusPoints.map(point => { const selected = (selectedLayer.focusX ?? 50) === point.x && (selectedLayer.focusY ?? 50) === point.y; return <button key={`${point.x}-${point.y}`} type="button" className={selected ? 'active' : ''} aria-label={tr(language, `Căn crop: ${point.label}`, `Crop focus: ${point.label}`)} aria-pressed={selected} onClick={() => updateLayer(selectedLayer.id, { focusX: point.x, focusY: point.y })}><i /></button> })}</div></div><label>{tr(language, 'Độ trong suốt', 'Opacity')}<input type="range" min=".1" max="1" step=".05" value={selectedLayer.opacity} onChange={event => updateLayer(selectedLayer.id, { opacity: Number(event.target.value) })} /></label></>}
         {selectedLayer?.type === 'freehand' && <><label>{tr(language, 'Màu nét vẽ', 'Stroke color')}<input type="color" value={selectedLayer.color} onChange={event => updateLayer(selectedLayer.id, { color: event.target.value })} /></label><label>{tr(language, 'Độ dày nét', 'Stroke width')}<input type="range" min="1" max="12" step="1" value={selectedLayer.strokeWidth} onChange={event => updateLayer(selectedLayer.id, { strokeWidth: Number(event.target.value) })} /></label></>}
         {!selectedItem && <p>{tr(language, 'Chọn một ô ảnh hoặc layer trên canvas để chỉnh kích thước và vị trí.', 'Select a photo slot or layer on the canvas to edit its size and position.')}</p>}
-        <div className="studio-layer-list"><strong>{tr(language, 'Layers', 'Layers')}</strong>{[...(draft.layers ?? [])].reverse().map(layer => <button className={`${selection?.id === layer.id ? 'active' : ''} ${layer.hidden ? 'muted' : ''}`} type="button" key={layer.id} onClick={() => setSelection({ kind: 'layer', id: layer.id })}>{layer.type}<span>{layer.locked ? 'locked' : layer.hidden ? 'hidden' : layer.id.slice(0, 6)}</span></button>)}{draft.slots.map((slot, index) => <button className={`${selection?.id === slot.id ? 'active' : ''} ${slot.hidden ? 'muted' : ''}`} type="button" key={slot.id} onClick={() => setSelection({ kind: 'slot', id: slot.id })}>{tr(language, `Ảnh ${index + 1}`, `Photo ${index + 1}`)}<span>{slot.locked ? 'locked' : slot.hidden ? 'hidden' : slot.shape ?? 'rectangle'}</span></button>)}</div>
+        <div className="studio-layer-list"><strong>{tr(language, 'Layers', 'Layers')}</strong>{[...(draft.layers ?? [])].reverse().map(layer => <button className={`${selection?.id === layer.id ? 'active' : ''} ${layer.hidden ? 'muted' : ''}`} type="button" key={layer.id} onClick={() => setSelection({ kind: 'layer', id: layer.id })}>{layer.type}<span>{layer.groupId ? `group ${layer.groupId.slice(-4)}` : layer.locked ? 'locked' : layer.hidden ? 'hidden' : layer.id.slice(0, 6)}</span></button>)}{draft.slots.map((slot, index) => <button className={`${selection?.id === slot.id ? 'active' : ''} ${slot.hidden ? 'muted' : ''}`} type="button" key={slot.id} onClick={() => setSelection({ kind: 'slot', id: slot.id })}>{tr(language, `Ảnh ${index + 1}`, `Photo ${index + 1}`)}<span>{slot.groupId ? `group ${slot.groupId.slice(-4)}` : slot.locked ? 'locked' : slot.hidden ? 'hidden' : slot.shape ?? 'rectangle'}</span></button>)}</div>
       </aside>
     </div>
     <footer className="frame-studio-status"><span>{status || tr(language, 'PNG, JPEG, WebP và SVG được nhúng vào frame. Lưu vào thư viện để giữ lại trên máy.', 'PNG, JPEG, WebP, and SVG assets are embedded. Save to library to keep them on this computer.')}</span></footer>
@@ -438,7 +531,7 @@ function StudioLayer({ layer, selected, editing, onPointerDown, onResize, onSele
   const style = itemStyle(layer)
   const visibility = layer.hidden ? { display: 'none' } : undefined
   const handle = selected && !layer.locked ? <i className="studio-resize-handle" onPointerDown={onResize} /> : null
-  if (layer.type === 'image') return <button type="button" className={`studio-canvas-item studio-image ${selected ? 'selected' : ''}`} style={{ ...style, ...visibility, opacity: layer.opacity }} onPointerDown={onPointerDown}><img src={layer.src} alt="" style={{ objectFit: layer.fit ?? 'contain' }} />{handle}</button>
+  if (layer.type === 'image') return <button type="button" className={`studio-canvas-item studio-image ${selected ? 'selected' : ''} ${layer.zIndex <= 0 ? 'studio-background-image' : ''}`} style={{ ...style, ...visibility, opacity: layer.opacity }} onPointerDown={onPointerDown}><img src={layer.src} alt="" style={{ objectFit: layer.fit ?? 'contain', objectPosition: `${layer.focusX ?? 50}% ${layer.focusY ?? 50}%`, transform: layer.artworkScale && layer.artworkScale !== 1 ? `scale(${layer.artworkScale})` : undefined }} />{handle}</button>
   if (layer.type === 'text') {
     const textStyle = { ...style, ...visibility, color: layer.color, fontSize: `${layer.fontSize}cqi`, fontWeight: layer.fontWeight, fontFamily: studioFont(layer.fontFamily), fontStyle: layer.italic ? 'italic' : undefined, letterSpacing: `${layer.letterSpacing ?? 0}em`, WebkitTextStroke: layer.strokeWidth ? `${layer.strokeWidth}px ${layer.stroke ?? 'transparent'}` : undefined, textShadow: layer.shadowBlur ? `0 ${layer.shadowBlur / 2}px ${layer.shadowBlur}px ${layer.shadowColor ?? '#00000055'}` : undefined, textAlign: layer.align } as CSSProperties
     if (editing) return <div className="studio-canvas-item studio-text studio-text-editing" contentEditable suppressContentEditableWarning autoFocus style={textStyle} onPointerDown={event => event.stopPropagation()} onInput={event => onTextChange(event.currentTarget.textContent ?? '')} onBlur={onFinishEdit} onKeyDown={event => { if (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey)) { event.preventDefault(); event.currentTarget.blur() } }}>{layer.text}</div>

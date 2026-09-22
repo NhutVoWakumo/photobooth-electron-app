@@ -45,8 +45,15 @@ export function FrameArtwork({ template, photos = [], activeSlot, onSlotClick, s
     '--frame-slot-dark': template.theme.slotDark,
     background: backgroundCss(template.background, template.theme.paper)
   } as CSSProperties
+  // The canvas has one reliable stacking contract: artwork below the photo
+  // plane, then guest photos, then decorations above them. This means an
+  // imported background can never cover the photographs just because its DOM
+  // node happens to be rendered later.
+  const lowerLayers = (template.layers ?? []).filter(layer => layer.zIndex < 10)
+  const upperLayers = (template.layers ?? []).filter(layer => layer.zIndex >= 10)
   return (
     <div className={`frame-artwork ${selected ? 'selected' : ''}`} aria-label={label ?? `${tr(language, 'Xem trước khung', 'Frame preview')}: ${getTemplateCopy(language, template).name}`} role="img" style={themeStyle}>
+      {lowerLayers.map(layer => <ArtworkLayer key={layer.id} layer={layer} />)}
       <div className="frame-slots">
         {template.slots.map((slot, index) => {
           const transform = getTransform(index)
@@ -60,7 +67,7 @@ export function FrameArtwork({ template, photos = [], activeSlot, onSlotClick, s
           return onSlotClick ? <button aria-label={tr(language, `Thay ảnh trong ô ${index + 1}`, `Replace photo in slot ${index + 1}`)} className={className} key={slot.id} style={slotStyle} onClick={() => onSlotClick(index)} {...pointerProps}>{content}</button> : <span className={className} key={slot.id} style={slotStyle} {...pointerProps}>{content}</span>
         })}
       </div>
-      {(template.layers ?? []).map(layer => <ArtworkLayer key={layer.id} layer={layer} />)}
+      {upperLayers.map(layer => <ArtworkLayer key={layer.id} layer={layer} />)}
       {(template.layers?.length ?? 0) === 0 && <><span className="frame-topline">LUMA BOOTH</span><span className="frame-footer">A MOMENT, KEPT</span></>}
     </div>
   )
@@ -73,7 +80,10 @@ function ArtworkLayer({ layer }: { layer: FrameLayer }): JSX.Element | null {
     return <svg className="frame-layer frame-drawing-layer" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ zIndex: layer.zIndex }} aria-hidden="true"><polyline points={points} fill="none" stroke={layer.color} strokeWidth={layer.strokeWidth} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></svg>
   }
   const style = { left: `${layer.x * 100}%`, top: `${layer.y * 100}%`, width: `${layer.width * 100}%`, height: `${layer.height * 100}%`, transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined, zIndex: layer.zIndex } as CSSProperties
-  if (layer.type === 'image') return <img className="frame-layer frame-image-layer" src={layer.src} alt="" style={{ ...style, opacity: layer.opacity, objectFit: layer.fit ?? 'contain' }} />
+  if (layer.type === 'image') {
+    const transforms = [layer.rotation ? `rotate(${layer.rotation}deg)` : '', layer.artworkScale && layer.artworkScale !== 1 ? `scale(${layer.artworkScale})` : ''].filter(Boolean).join(' ')
+    return <img className="frame-layer frame-image-layer" src={layer.src} alt="" style={{ ...style, transform: transforms || undefined, transformOrigin: 'center', opacity: layer.opacity, objectFit: layer.fit ?? 'contain', objectPosition: `${layer.focusX ?? 50}% ${layer.focusY ?? 50}%` }} />
+  }
   if (layer.type === 'text') return <span className="frame-layer frame-text-layer" style={{ ...style, color: layer.color, fontSize: `${layer.fontSize}cqi`, fontWeight: layer.fontWeight, fontFamily: fontFamily(layer.fontFamily), fontStyle: layer.italic ? 'italic' : undefined, letterSpacing: `${layer.letterSpacing ?? 0}em`, textShadow: layer.shadowBlur ? `0 ${layer.shadowBlur / 2}px ${layer.shadowBlur}px ${layer.shadowColor ?? '#00000055'}` : undefined, WebkitTextStroke: layer.strokeWidth ? `${layer.strokeWidth}px ${layer.stroke ?? 'transparent'}` : undefined, textAlign: layer.align }}>{layer.text}</span>
   if (layer.type === 'sticker') return <span className="frame-layer frame-sticker-layer" style={style}><StickerIcon kind={layer.sticker} color={layer.color} secondaryColor={layer.secondaryColor} stroke={layer.stroke} strokeWidth={layer.strokeWidth} /></span>
   const shape = { id: layer.id, x: 0, y: 0, width: 1, height: 1, shape: layer.shape } as FrameSlot

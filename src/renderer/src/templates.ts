@@ -25,12 +25,13 @@ export interface FrameSlot {
   strokeWidth?: number
   hidden?: boolean
   locked?: boolean
+  groupId?: string
   fit?: 'cover' | 'contain'
 }
-interface FrameLayerState { hidden?: boolean; locked?: boolean }
+interface FrameLayerState { hidden?: boolean; locked?: boolean; groupId?: string }
 export interface FrameTextLayer extends FrameLayerState { id: string; type: 'text'; x: number; y: number; width: number; height: number; text: string; color: string; fontSize: number; fontWeight: number; align: 'left' | 'center' | 'right'; fontFamily?: string; letterSpacing?: number; italic?: boolean; stroke?: string; strokeWidth?: number; shadowColor?: string; shadowBlur?: number; rotation?: number; zIndex: number }
 export interface FrameShapeLayer extends FrameLayerState { id: string; type: 'shape'; x: number; y: number; width: number; height: number; shape: FrameSlotShape; fill: string; stroke: string; strokeWidth: number; rotation?: number; zIndex: number }
-export interface FrameImageLayer extends FrameLayerState { id: string; type: 'image'; x: number; y: number; width: number; height: number; src: string; opacity: number; fit?: 'contain' | 'cover'; rotation?: number; zIndex: number }
+export interface FrameImageLayer extends FrameLayerState { id: string; type: 'image'; x: number; y: number; width: number; height: number; src: string; opacity: number; fit?: 'contain' | 'cover'; focusX?: number; focusY?: number; artworkScale?: number; rotation?: number; zIndex: number }
 export interface FrameFreehandLayer extends FrameLayerState { id: string; type: 'freehand'; points: Array<{ x: number; y: number }>; color: string; strokeWidth: number; zIndex: number }
 export interface FrameStickerLayer extends FrameLayerState { id: string; type: 'sticker'; x: number; y: number; width: number; height: number; sticker: FrameStickerKind; color: string; secondaryColor: string; stroke: string; strokeWidth: number; rotation?: number; zIndex: number }
 export type FrameLayer = FrameTextLayer | FrameShapeLayer | FrameImageLayer | FrameFreehandLayer | FrameStickerLayer
@@ -207,7 +208,7 @@ function parseLayer(layer: FrameLayer, index: number): FrameLayer {
   if (layer.type === 'text') return { ...layer, ...geometry, text: String(layer.text ?? '').slice(0, 500), color: typeof layer.color === 'string' ? layer.color : '#193525', fontSize: Math.max(1, Math.min(30, finiteOr(layer.fontSize, 5))), fontWeight: Math.max(100, Math.min(900, finiteOr(layer.fontWeight, 700))), align: ['left', 'center', 'right'].includes(layer.align) ? layer.align : 'center', fontFamily: typeof layer.fontFamily === 'string' && layer.fontFamily.length <= 80 ? layer.fontFamily : 'sans' }
   if (layer.type === 'image') {
     if (typeof layer.src !== 'string' || !/^data:image\/(png|jpeg|webp|svg\+xml);/i.test(layer.src)) throw new Error(`Image layer ${index + 1} must contain an embedded PNG, JPEG, WebP, or SVG.`)
-    return { ...layer, ...geometry, opacity: Math.max(.05, Math.min(1, finiteOr(layer.opacity, 1))), fit: layer.fit === 'cover' ? 'cover' : 'contain' }
+    return { ...layer, ...geometry, opacity: Math.max(.05, Math.min(1, finiteOr(layer.opacity, 1))), fit: layer.fit === 'cover' ? 'cover' : 'contain', focusX: Math.max(0, Math.min(100, finiteOr(layer.focusX, 50))), focusY: Math.max(0, Math.min(100, finiteOr(layer.focusY, 50))), artworkScale: Math.max(1, Math.min(3, finiteOr(layer.artworkScale, 1))) }
   }
   if (layer.type === 'sticker') {
     const sticker = ['heart', 'sparkle', 'flower', 'bow', 'smile', 'music', 'cloud', 'bolt', 'cherry', 'star'].includes(layer.sticker) ? layer.sticker : 'star'
