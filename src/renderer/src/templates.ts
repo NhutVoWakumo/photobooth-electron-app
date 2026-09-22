@@ -27,7 +27,7 @@ export interface FrameSlot {
   fit?: 'cover' | 'contain'
 }
 interface FrameLayerState { hidden?: boolean; locked?: boolean }
-export interface FrameTextLayer extends FrameLayerState { id: string; type: 'text'; x: number; y: number; width: number; height: number; text: string; color: string; fontSize: number; fontWeight: number; align: 'left' | 'center' | 'right'; fontFamily?: 'display' | 'sans' | 'mono' | 'serif'; letterSpacing?: number; italic?: boolean; stroke?: string; strokeWidth?: number; shadowColor?: string; shadowBlur?: number; rotation?: number; zIndex: number }
+export interface FrameTextLayer extends FrameLayerState { id: string; type: 'text'; x: number; y: number; width: number; height: number; text: string; color: string; fontSize: number; fontWeight: number; align: 'left' | 'center' | 'right'; fontFamily?: 'display' | 'sans' | 'mono' | 'serif' | 'script'; letterSpacing?: number; italic?: boolean; stroke?: string; strokeWidth?: number; shadowColor?: string; shadowBlur?: number; rotation?: number; zIndex: number }
 export interface FrameShapeLayer extends FrameLayerState { id: string; type: 'shape'; x: number; y: number; width: number; height: number; shape: FrameSlotShape; fill: string; stroke: string; strokeWidth: number; rotation?: number; zIndex: number }
 export interface FrameImageLayer extends FrameLayerState { id: string; type: 'image'; x: number; y: number; width: number; height: number; src: string; opacity: number; rotation?: number; zIndex: number }
 export interface FrameFreehandLayer extends FrameLayerState { id: string; type: 'freehand'; points: Array<{ x: number; y: number }>; color: string; strokeWidth: number; zIndex: number }
@@ -122,6 +122,20 @@ export const templates: TemplateManifest[] = [
       { id: 'sparkle', type: 'sticker', x: .03, y: .57, width: .14, height: .045, sticker: 'sparkle', color: '#ffbf47', secondaryColor: '#ffffff', stroke: '#284b35', strokeWidth: 1, rotation: -8, zIndex: 35 },
       { id: 'footer', type: 'text', x: .08, y: .91, width: .84, height: .04, text: 'YOU MAKE TODAY BRIGHT', color: '#284b35', fontSize: 2.6, fontWeight: 800, align: 'center', fontFamily: 'sans', letterSpacing: .12, zIndex: 30 }
     ]
+  },
+  {
+    id: 'family-story', name: 'Family story', description: 'Four soft-edged moments on a clean 5 × 15 cm strip.', rows: 4, columns: 1, requiredSlots: 4, printLabel: '2 × 6 in strip', output: { width: 600, height: 1800, ppi: 300 }, builtIn: true,
+    theme: { id: 'family-story', label: 'Family story', paper: '#ffffff', ink: '#2d4933', accent: '#9caf78', slotLight: '#edf1e9', slotDark: '#b9c7ac' },
+    background: { kind: 'solid', color: '#ffffff', secondaryColor: '#ffffff', scale: 8, angle: 0 },
+    slots: [
+      { id: 'slot-1', x: .09, y: .045, width: .82, height: .195, shape: 'rounded', radius: .105, fit: 'cover', zIndex: 10 },
+      { id: 'slot-2', x: .09, y: .275, width: .82, height: .195, shape: 'rounded', radius: .105, fit: 'cover', zIndex: 10 },
+      { id: 'slot-3', x: .09, y: .505, width: .82, height: .195, shape: 'rounded', radius: .105, fit: 'cover', zIndex: 10 },
+      { id: 'slot-4', x: .09, y: .735, width: .82, height: .195, shape: 'rounded', radius: .105, fit: 'cover', zIndex: 10 }
+    ],
+    layers: [
+      { id: 'family-wordmark', type: 'text', x: .12, y: .945, width: .76, height: .038, text: 'Family', color: '#92a46e', fontSize: 7.4, fontWeight: 500, align: 'center', fontFamily: 'script', italic: true, zIndex: 30 }
+    ]
   }
 ]
 
@@ -184,7 +198,7 @@ function parseLayer(layer: FrameLayer, index: number): FrameLayer {
   }
   if (![layer.x, layer.y, layer.width, layer.height].every(number => typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= 1) || layer.width <= 0 || layer.height <= 0 || layer.x + layer.width > 1 || layer.y + layer.height > 1) throw new Error(`Layer ${index + 1} falls outside the canvas.`)
   const geometry = { x: layer.x, y: layer.y, width: layer.width, height: layer.height, rotation: finiteOr(layer.rotation, 0), zIndex }
-  if (layer.type === 'text') return { ...layer, ...geometry, text: String(layer.text ?? '').slice(0, 500), color: typeof layer.color === 'string' ? layer.color : '#193525', fontSize: Math.max(1, Math.min(30, finiteOr(layer.fontSize, 5))), fontWeight: Math.max(100, Math.min(900, finiteOr(layer.fontWeight, 700))), align: ['left', 'center', 'right'].includes(layer.align) ? layer.align : 'center' }
+  if (layer.type === 'text') return { ...layer, ...geometry, text: String(layer.text ?? '').slice(0, 500), color: typeof layer.color === 'string' ? layer.color : '#193525', fontSize: Math.max(1, Math.min(30, finiteOr(layer.fontSize, 5))), fontWeight: Math.max(100, Math.min(900, finiteOr(layer.fontWeight, 700))), align: ['left', 'center', 'right'].includes(layer.align) ? layer.align : 'center', fontFamily: ['display', 'sans', 'mono', 'serif', 'script'].includes(layer.fontFamily ?? '') ? layer.fontFamily : 'sans' }
   if (layer.type === 'image') {
     if (typeof layer.src !== 'string' || !/^data:image\/(png|jpeg|svg\+xml);/i.test(layer.src)) throw new Error(`Image layer ${index + 1} must contain an embedded PNG, JPEG, or SVG.`)
     return { ...layer, ...geometry, opacity: Math.max(.05, Math.min(1, finiteOr(layer.opacity, 1))) }
@@ -193,7 +207,7 @@ function parseLayer(layer: FrameLayer, index: number): FrameLayer {
     const sticker = ['heart', 'sparkle', 'flower', 'bow', 'smile', 'music', 'cloud', 'bolt', 'cherry', 'star'].includes(layer.sticker) ? layer.sticker : 'star'
     return { ...layer, ...geometry, sticker, color: typeof layer.color === 'string' ? layer.color : '#8fbd87', secondaryColor: typeof layer.secondaryColor === 'string' ? layer.secondaryColor : '#ffffff', stroke: typeof layer.stroke === 'string' ? layer.stroke : '#193525', strokeWidth: Math.max(0, Math.min(20, finiteOr(layer.strokeWidth, 1))) }
   }
-  const shape = ['rectangle', 'rounded', 'circle', 'ellipse', 'arch'].includes(layer.shape) ? layer.shape : 'rectangle'
+  const shape = ['rectangle', 'rounded', 'circle', 'ellipse', 'arch', 'heart', 'diamond', 'star', 'scallop', 'blob', 'ticket'].includes(layer.shape) ? layer.shape : 'rectangle'
   return { ...layer, ...geometry, shape, fill: typeof layer.fill === 'string' ? layer.fill : '#8fbd87', stroke: typeof layer.stroke === 'string' ? layer.stroke : 'transparent', strokeWidth: Math.max(0, Math.min(20, finiteOr(layer.strokeWidth, 0))) }
 }
 

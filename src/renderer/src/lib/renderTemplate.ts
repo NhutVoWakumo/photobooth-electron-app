@@ -199,6 +199,7 @@ function drawSticker(context: CanvasRenderingContext2D, layer: FrameStickerLayer
 function canvasFont(font?: string): string {
   if (font === 'mono') return 'ui-monospace, Menlo, monospace'
   if (font === 'serif') return 'Georgia, serif'
+  if (font === 'script') return 'Snell Roundhand, Apple Chancery, Brush Script MT, cursive'
   return 'system-ui, sans-serif'
 }
 

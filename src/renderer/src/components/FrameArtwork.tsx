@@ -81,6 +81,7 @@ function ArtworkLayer({ layer }: { layer: FrameLayer }): JSX.Element | null {
 function fontFamily(font?: string): string {
   if (font === 'mono') return 'ui-monospace, SFMono-Regular, Menlo, monospace'
   if (font === 'serif') return 'Georgia, Times New Roman, serif'
+  if (font === 'script') return 'Snell Roundhand, Apple Chancery, Brush Script MT, cursive'
   if (font === 'display') return 'var(--font-display)'
   return 'var(--font-body)'
 }
