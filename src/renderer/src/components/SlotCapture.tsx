@@ -30,6 +30,7 @@ export function SlotCapture({ camera, language, settings, template, frame, initi
   const selectedPhoto = assignments[selectedSlot]
   const slot = template.slots[selectedSlot]
   const aspectRatio = (slot.width * template.output.width) / (slot.height * template.output.height)
+  const looksLikeScreenCapture = /screen|display|capture|obs|ndi|manycam|snap camera|virtual/i.test(settings.cameraName)
 
   const updateResolution = useCallback(() => {
     const video = videoRef.current
@@ -95,7 +96,10 @@ export function SlotCapture({ camera, language, settings, template, frame, initi
     }, 1000)
   }
   const startSequence = () => {
-    if (!camera.stream || sequenceRunning || complete) return
+    // A complete frame can still retake the currently selected slot. Only
+    // block capture when every slot is filled and the selected slot is empty
+    // (which is not a valid state), or while another sequence is running.
+    if (!camera.stream || sequenceRunning || (complete && !selectedPhoto)) return
     captureQueueRef.current = template.slots
       .map((_, index) => index)
       .filter(index => index !== selectedSlot && !frame.assignments[index])
@@ -122,9 +126,10 @@ export function SlotCapture({ camera, language, settings, template, frame, initi
     </div></main>
     <aside className="capture-actions">
       <div className="active-slot-label"><span>{tr(language, 'Đang chọn', 'Selected')}</span><strong>{tr(language, `Ảnh ${selectedSlot + 1}`, `Photo ${selectedSlot + 1}`)}</strong></div>
-      <button className="workstation-capture" disabled={!camera.stream || sequenceRunning || complete} onClick={startSequence}><span aria-hidden="true" />{countdown !== null ? countdown : sequenceRunning ? view === 'photo' ? tr(language, 'Đang xem', 'Reviewing') : tr(language, 'Đang chụp', 'Capturing') : selectedPhoto ? tr(language, 'Chụp lại', 'Retake') : tr(language, 'Chụp', 'Capture')}</button>
+      <button className="workstation-capture" disabled={!camera.stream || sequenceRunning || (complete && !selectedPhoto)} onClick={startSequence}><span aria-hidden="true" />{countdown !== null ? countdown : sequenceRunning ? view === 'photo' ? tr(language, 'Đang xem', 'Reviewing') : tr(language, 'Đang chụp', 'Capturing') : selectedPhoto ? tr(language, 'Chụp lại', 'Retake') : tr(language, 'Chụp', 'Capture')}</button>
       <button className="workstation-print" disabled={!complete} onClick={() => setPrintPreview(true)}>{tr(language, 'Xem & in', 'Review & print')}<small>{complete ? tr(language, 'Frame đã sẵn sàng', 'Frame is ready') : tr(language, `Còn ${template.requiredSlots - filled} ảnh`, `${template.requiredSlots - filled} photos left`)}</small></button>
     </aside>
+    {looksLikeScreenCapture && <p className="camera-source-hint" role="status">{tr(language, 'Nếu ảnh bị lặp cửa sổ hoặc dính chữ, hãy chọn Virtual Camera của webcam, không chọn Screen / Display Capture.', 'If the photo repeats app windows or text, choose the webcam Virtual Camera output—not Screen / Display Capture.')}</p>}
     {printPreview && <OutputEditor language={language} settings={settings} template={template} frame={frame} assignments={assignments} onChange={onChange} onClose={() => setPrintPreview(false)} onSaveExit={onCancel} onDelete={onDelete} />}
   </section>
 }

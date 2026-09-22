@@ -973,6 +973,7 @@ body {
 .workstation-capture > span { width: 3.25rem; aspect-ratio: 1; background: #102016; border: .45rem solid rgba(255,255,255,.82); border-radius: 50%; box-shadow: 0 0 0 2px #102016; }
 .workstation-capture:disabled { color: rgba(255,255,255,.35); background: #1b211d; border-color: rgba(255,255,255,.08); }
 .workstation-capture:disabled > span { background: rgba(255,255,255,.18); border-color: #1b211d; box-shadow: 0 0 0 2px rgba(255,255,255,.18); }
+.camera-source-hint { position: absolute; z-index: 8; left: 50%; bottom: .75rem; width: min(38rem, calc(100% - 2rem)); margin: 0; padding: .7rem 1rem; color: #ffdca8; background: rgba(111, 67, 14, .9); border: 1px solid rgba(255, 196, 92, .28); border-radius: .75rem; font-size: .84rem; line-height: 1.35; translate: -50% 0; }
 .workstation-print { color: #fff; background: #152019; border: 1px solid rgba(255,255,255,.16); font-size: 1rem; }
 .workstation-print small { margin-top: .45rem; color: rgba(255,255,255,.5); font-size: .6rem; font-weight: 650; }
 .workstation-print:not(:disabled) { color: #07120b; background: #78f49c; border-color: #b9ffce; }
