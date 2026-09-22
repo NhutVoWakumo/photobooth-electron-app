@@ -123,10 +123,6 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
 }): JSX.Element {
   return <div className="settings-section">
     <SettingsPageHeader title={tr(draft.language, 'Sự kiện & thiết bị', 'Event & devices')} description={tr(draft.language, 'Thông tin hiển thị và phần cứng dùng trong booth.', 'Identity and hardware used by this booth.')} />
-    <SettingsGroup title={tr(draft.language, 'Thông tin hiển thị', 'On-screen details')}>
-      <label>{t(draft.language, 'welcomeHeading')}<textarea rows={2} value={draft.welcomeHeading} onChange={event => update('welcomeHeading', event.target.value)} /><small>{t(draft.language, 'welcomeHeadingHelp')}</small></label>
-      <label>{t(draft.language, 'eventName')}<input value={draft.eventName} onChange={event => update('eventName', event.target.value)} /></label>
-    </SettingsGroup>
     <SettingsGroup title={tr(draft.language, 'Thiết bị', 'Hardware')}>
       <div className="settings-field"><div className="field-heading"><span>{t(draft.language, 'camera')}</span><button className="text-button" type="button" onClick={onRefreshCameras}>{t(draft.language, 'refresh')}</button></div>
         <select aria-label={t(draft.language, 'cameraAria')} value={selectedCameraId} onChange={event => onSelectCamera(event.target.value)} disabled={cameraDevices.length === 0}>
