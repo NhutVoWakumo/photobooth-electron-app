@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type JSX, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type JSX, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import { frameThemes, getPhysicalPrintSize, parseFrameImport, type FrameBackgroundKind, type FrameFontAsset, type FrameLayer, type FrameSlot, type FrameSlotShape, type FrameStickerKind, type TemplateManifest } from '../templates'
 import { StickerIcon } from './StickerIcon'
@@ -73,8 +73,11 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
   const [assetLibrary, setAssetLibrary] = useState<StudioAsset[]>([])
   const [status, setStatus] = useState('')
+  const [zoom, setZoom] = useState(100)
+  const [fitCanvasWidth, setFitCanvasWidth] = useState(0)
   const assetPlacementRef = useRef<'background' | 'overlay' | 'sticker'>('overlay')
   const canvasRef = useRef<HTMLDivElement>(null)
+  const canvasViewportRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const designRef = useRef<HTMLInputElement>(null)
   const fontRef = useRef<HTMLInputElement>(null)
@@ -83,6 +86,20 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
 
   useEffect(() => { void loadFrameFonts(draft) }, [draft])
   useEffect(() => { void listStudioAssets().then(setAssetLibrary).catch(() => setStatus(tr(language, 'Không thể mở thư viện asset local.', 'Could not open the local asset library.'))) }, [language])
+  useEffect(() => {
+    const viewport = canvasViewportRef.current
+    if (!viewport) return
+    const updateFitWidth = () => {
+      const ratio = draft.output.width / draft.output.height
+      const availableWidth = Math.max(1, viewport.clientWidth - 40)
+      const availableHeight = Math.max(1, viewport.clientHeight - 40)
+      setFitCanvasWidth(Math.min(availableWidth, Math.min(availableHeight, 768) * ratio))
+    }
+    updateFitWidth()
+    const observer = new ResizeObserver(updateFitWidth)
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [draft.output.height, draft.output.width])
 
   const setDraft = (update: TemplateManifest | ((current: TemplateManifest) => TemplateManifest)) => {
     const current = draftRef.current
@@ -193,6 +210,13 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
   const setPreset = (value: CanvasPreset) => {
     const next = presetMap[value]
     setDraft(current => ({ ...current, output: { width: next.width, height: next.height, ppi: 300 }, printLabel: next.printLabel }))
+  }
+
+  const changeZoom = (amount: number) => setZoom(current => clamp(current + amount, 50, 175))
+  const handleCanvasWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return
+    event.preventDefault()
+    changeZoom(event.deltaY < 0 ? 10 : -10)
   }
 
   const pointerPosition = (event: ReactPointerEvent): { x: number; y: number } => {
@@ -354,11 +378,22 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
       </aside>
 
       <main className="studio-workspace">
-        <div className="studio-size-label"><strong>{getPhysicalPrintSize(draft)}</strong><span>{draft.output.width} × {draft.output.height}px at {draft.output.ppi} PPI</span></div>
-        <div className="studio-canvas-wrap">
-          <div ref={canvasRef} className={`studio-canvas ${drawing ? 'drawing' : ''}`} style={{ '--studio-ratio': draft.output.width / draft.output.height, aspectRatio: `${draft.output.width}/${draft.output.height}`, background: backgroundCss(draft) } as CSSProperties} onPointerDown={drawStart} onPointerMove={event => drawing ? drawMove(event) : moveSelected(event)} onPointerUp={stopMove} onPointerCancel={stopMove}>
-            {draft.slots.map((slot, index) => <button key={slot.id} type="button" className={`studio-canvas-item studio-slot ${selection?.id === slot.id ? 'selected' : ''} shape-${slot.shape ?? 'rectangle'}`} style={{ ...itemStyle(slot), clipPath: shapeClipPath(slot.shape), borderRadius: shapeBorderRadius(slot.shape, slot.radius), display: slot.hidden ? 'none' : undefined, boxShadow: slot.strokeWidth ? `inset 0 0 0 ${slot.strokeWidth}px ${slot.stroke ?? draft.theme.ink}` : undefined }} onPointerDown={event => startMove(event, { kind: 'slot', id: slot.id }, slot.x, slot.y)}><span>{index + 1}</span>{selection?.id === slot.id && !slot.locked && <i className="studio-resize-handle" onPointerDown={event => startResize(event, { kind: 'slot', id: slot.id }, slot)} />}</button>)}
-            {(draft.layers ?? []).map(layer => <StudioLayer key={layer.id} layer={layer} selected={selection?.id === layer.id} editing={editingTextId === layer.id} onPointerDown={event => layer.type !== 'freehand' && startMove(event, { kind: 'layer', id: layer.id }, layer.x, layer.y)} onResize={event => layer.type !== 'freehand' && startResize(event, { kind: 'layer', id: layer.id }, layer)} onSelect={() => setSelection({ kind: 'layer', id: layer.id })} onEdit={() => layer.type === 'text' && setEditingTextId(layer.id)} onTextChange={text => layer.type === 'text' && updateLayer(layer.id, { text })} onFinishEdit={() => setEditingTextId(null)} />)}
+        <div className="studio-canvas-toolbar">
+          <div className="studio-size-label"><strong>{getPhysicalPrintSize(draft)}</strong><span>{draft.output.width} × {draft.output.height}px at {draft.output.ppi} PPI</span></div>
+          <div className="studio-zoom-controls" aria-label={tr(language, 'Điều khiển zoom canvas', 'Canvas zoom controls')}>
+            <button type="button" onClick={() => changeZoom(-25)} disabled={zoom <= 50} aria-label={tr(language, 'Thu nhỏ canvas', 'Zoom out canvas')}>−</button>
+            <label><span>{tr(language, 'Zoom', 'Zoom')}</span><input type="range" min="50" max="175" step="25" value={zoom} onChange={event => setZoom(Number(event.target.value))} aria-label={tr(language, 'Mức zoom canvas', 'Canvas zoom level')} /></label>
+            <output aria-live="polite">{zoom}%</output>
+            <button type="button" onClick={() => changeZoom(25)} disabled={zoom >= 175} aria-label={tr(language, 'Phóng to canvas', 'Zoom in canvas')}>+</button>
+            <button className="studio-zoom-fit" type="button" onClick={() => setZoom(100)} disabled={zoom === 100}>{tr(language, 'Vừa khung', 'Fit')}</button>
+          </div>
+        </div>
+        <div ref={canvasViewportRef} className="studio-canvas-wrap" onWheel={handleCanvasWheel}>
+          <div className="studio-canvas-zoom-stage" style={{ width: fitCanvasWidth ? `${fitCanvasWidth * zoom / 100}px` : undefined, aspectRatio: `${draft.output.width}/${draft.output.height}` }}>
+            <div ref={canvasRef} className={`studio-canvas ${drawing ? 'drawing' : ''}`} style={{ '--studio-ratio': draft.output.width / draft.output.height, aspectRatio: `${draft.output.width}/${draft.output.height}`, background: backgroundCss(draft) } as CSSProperties} onPointerDown={drawStart} onPointerMove={event => drawing ? drawMove(event) : moveSelected(event)} onPointerUp={stopMove} onPointerCancel={stopMove}>
+              {draft.slots.map((slot, index) => <button key={slot.id} type="button" className={`studio-canvas-item studio-slot ${selection?.id === slot.id ? 'selected' : ''} shape-${slot.shape ?? 'rectangle'}`} style={{ ...itemStyle(slot), clipPath: shapeClipPath(slot.shape), borderRadius: shapeBorderRadius(slot.shape, slot.radius), display: slot.hidden ? 'none' : undefined, boxShadow: slot.strokeWidth ? `inset 0 0 0 ${slot.strokeWidth}px ${slot.stroke ?? draft.theme.ink}` : undefined }} onPointerDown={event => startMove(event, { kind: 'slot', id: slot.id }, slot.x, slot.y)}><span>{index + 1}</span>{selection?.id === slot.id && !slot.locked && <i className="studio-resize-handle" onPointerDown={event => startResize(event, { kind: 'slot', id: slot.id }, slot)} />}</button>)}
+              {(draft.layers ?? []).map(layer => <StudioLayer key={layer.id} layer={layer} selected={selection?.id === layer.id} editing={editingTextId === layer.id} onPointerDown={event => layer.type !== 'freehand' && startMove(event, { kind: 'layer', id: layer.id }, layer.x, layer.y)} onResize={event => layer.type !== 'freehand' && startResize(event, { kind: 'layer', id: layer.id }, layer)} onSelect={() => setSelection({ kind: 'layer', id: layer.id })} onEdit={() => layer.type === 'text' && setEditingTextId(layer.id)} onTextChange={text => layer.type === 'text' && updateLayer(layer.id, { text })} onFinishEdit={() => setEditingTextId(null)} />)}
+            </div>
           </div>
         </div>
       </main>

@@ -1827,10 +1827,20 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .studio-dimensions input { min-height: 2.55rem; padding-inline: .45rem; }
 .studio-colors input[type="color"], .studio-inspector input[type="color"] { min-height: 2.6rem; padding: .2rem; }
 .studio-workspace { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; padding: 1rem; overflow: hidden; background: oklch(94.5% .009 145); }
-.studio-size-label { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); padding: 0 .25rem .75rem; color: var(--color-text-muted); font-size: .62rem; }
+.studio-canvas-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 0 .25rem .75rem; }
+.studio-size-label { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); min-width: 0; color: var(--color-text-muted); font-size: .62rem; }
 .studio-size-label strong { color: var(--color-text); font-size: .72rem; }
-.studio-canvas-wrap { display: grid; min-width: 0; min-height: 0; padding: 1.25rem; place-items: center; overflow: auto; }
-.studio-canvas { position: relative; container-type: inline-size; width: min(100%, calc(min(68vh, 48rem) * var(--studio-ratio))); max-width: 100%; height: auto; overflow: hidden; box-shadow: 0 1.5rem 4rem oklch(32% .025 145 / .18); touch-action: none; user-select: none; }
+.studio-zoom-controls { display: grid; grid-template-columns: 2.65rem minmax(7rem, 11rem) minmax(3.5rem, auto) 2.65rem auto; align-items: center; gap: .4rem; flex: 0 0 auto; color: var(--color-text-muted); }
+.studio-zoom-controls button { display: grid; min-width: 2.65rem; min-height: 2.65rem; padding: .35rem; place-items: center; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-line-strong); border-radius: var(--radius-sm); font-size: 1.2rem; font-weight: 800; line-height: 1; }
+.studio-zoom-controls button:active { transform: scale(.97); }
+.studio-zoom-controls button:disabled { opacity: .45; }
+.studio-zoom-controls label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .4rem; min-width: 0; font-size: .64rem; font-weight: 750; white-space: nowrap; }
+.studio-zoom-controls input { width: 100%; min-width: 0; accent-color: var(--color-accent-ink); }
+.studio-zoom-controls output { min-width: 3.5rem; color: var(--color-text); font-size: .72rem; font-variant-numeric: tabular-nums; font-weight: 800; text-align: center; }
+.studio-zoom-controls .studio-zoom-fit { min-width: 3.5rem; padding-inline: .55rem; font-size: .64rem; }
+.studio-canvas-wrap { display: flex; min-width: 0; min-height: 0; padding: 1.25rem; overflow: auto; }
+.studio-canvas-zoom-stage { flex: none; min-width: 1px; margin: auto; }
+.studio-canvas { position: relative; container-type: inline-size; width: 100%; max-width: none; height: auto; overflow: hidden; box-shadow: 0 1.5rem 4rem oklch(32% .025 145 / .18); touch-action: none; user-select: none; }
 .studio-canvas.drawing { cursor: crosshair; }
 .studio-canvas-item { position: absolute; min-width: 0; min-height: 0; margin: 0; padding: 0; cursor: grab; touch-action: none; }
 .studio-canvas-item:active { cursor: grabbing; }
@@ -1887,7 +1897,9 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
   .frame-studio-grid { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .studio-tools, .studio-inspector { grid-column: auto; grid-template-columns: minmax(0, 1fr); max-height: none; border: 0; border-bottom: 1px solid var(--color-line); }
   .studio-workspace { min-height: 36rem; overflow: visible; }
-  .studio-canvas { width: min(100%, calc(28rem * var(--studio-ratio))); max-width: 100%; height: auto; }
+  .studio-canvas-toolbar { align-items: flex-start; flex-direction: column; }
+  .studio-zoom-controls { width: 100%; grid-template-columns: 2.65rem minmax(0, 1fr) 3.5rem 2.65rem auto; }
+  .studio-canvas { width: 100%; max-width: none; height: auto; }
 }
 
 /* One fit rule for every frame surface. Width and height can never fight each
@@ -1915,5 +1927,9 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
   .frame-studio-actions .primary-button { grid-column: 1 / -1; }
   .frame-studio-actions button { min-width: 0; padding-inline: .5rem; font-size: .65rem; white-space: nowrap; }
   .studio-workspace { min-height: 30rem; padding-inline: .5rem; }
+  .studio-canvas-toolbar { padding-inline: 0; }
   .studio-canvas-wrap { padding: .75rem; }
+  .studio-zoom-controls { gap: .25rem; }
+  .studio-zoom-controls label span { display: none; }
+  .studio-zoom-controls .studio-zoom-fit { min-width: 3rem; padding-inline: .35rem; }
 }
