@@ -1,15 +1,15 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
-import { parseFrameImport, type FrameImageLayer, type TemplateManifest } from '../templates'
+import { parseFrameImport, type FrameFontAsset, type FrameImageLayer, type TemplateManifest } from '../templates'
 
 const MAX_PACK_BYTES = 24 * 1024 * 1024
-const imageMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml' }
+const assetMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf' }
 
-type PackManifest = Omit<TemplateManifest, 'layers'> & { schemaVersion: 1; layers?: Array<Omit<FrameImageLayer, 'src'> & { src: string } | unknown> }
+type PackManifest = Omit<TemplateManifest, 'layers' | 'fontAssets'> & { schemaVersion: 1; layers?: Array<Omit<FrameImageLayer, 'src'> & { src: string } | unknown>; fontAssets?: Array<Omit<FrameFontAsset, 'src'> & { src: string }> }
 
 function dataUrl(path: string, bytes: Uint8Array): string {
   const extension = path.split('.').pop()?.toLowerCase() ?? ''
-  const mime = imageMime[extension]
-  if (!mime) throw new Error(`Unsupported asset: ${path}. Use PNG, JPG, or SVG.`)
+  const mime = assetMime[extension]
+  if (!mime) throw new Error(`Unsupported asset: ${path}.`)
   if (mime === 'image/svg+xml') return `data:${mime};base64,${btoa(String.fromCharCode(...bytes))}`
   let binary = ''
   for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
@@ -30,7 +30,12 @@ export async function importFramePack(file: File): Promise<TemplateManifest> {
     if (!asset) throw new Error(`Missing asset: ${layer.src}`)
     return { ...layer, src: dataUrl(layer.src, asset) }
   })
-  return parseFrameImport(JSON.stringify({ ...manifest, layers }))
+  const fontAssets = (manifest.fontAssets ?? []).map(font => {
+    const asset = files[font.src]
+    if (!asset) throw new Error(`Missing font asset: ${font.src}`)
+    return { ...font, src: dataUrl(font.src, asset) }
+  })
+  return parseFrameImport(JSON.stringify({ ...manifest, layers, fontAssets }))
 }
 
 /** A portable original demo pack. It validates the same zip route used by Figma/Canva handoffs. */
@@ -66,6 +71,15 @@ export function exportFramePack(template: TemplateManifest): Blob {
     assets[path] = Uint8Array.from(binary, character => character.charCodeAt(0))
     return { ...layer, src: path }
   })
-  const manifest: PackManifest = { ...template, schemaVersion: 1, requiredSlots: template.slots.length, layers }
+  const fontAssets = (template.fontAssets ?? []).map(font => {
+    const match = /^data:font\/(woff2?|ttf|otf);base64,(.+)$/i.exec(font.src)
+    if (!match) return font
+    const extension = match[1].toLowerCase()
+    const path = `assets/font-${String(++assetIndex).padStart(2, '0')}.${extension}`
+    const binary = atob(match[2])
+    assets[path] = Uint8Array.from(binary, character => character.charCodeAt(0))
+    return { ...font, src: path }
+  })
+  const manifest: PackManifest = { ...template, schemaVersion: 1, requiredSlots: template.slots.length, layers, fontAssets }
   return new Blob([zipSync({ 'manifest.json': strToU8(JSON.stringify(manifest, null, 2)), ...assets })], { type: 'application/zip' })
 }

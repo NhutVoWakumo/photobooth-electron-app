@@ -10,6 +10,7 @@ export function stickerGlyph(sticker: FrameStickerKind): string {
 }
 export type FrameBackgroundKind = 'solid' | 'checker' | 'grid' | 'dots' | 'stripes' | 'gradient'
 export interface FrameBackground { kind: FrameBackgroundKind; color: string; secondaryColor: string; scale: number; angle: number }
+export interface FrameFontAsset { id: string; name: string; family: string; src: string }
 export interface FrameSlot {
   id: string
   x: number
@@ -27,7 +28,7 @@ export interface FrameSlot {
   fit?: 'cover' | 'contain'
 }
 interface FrameLayerState { hidden?: boolean; locked?: boolean }
-export interface FrameTextLayer extends FrameLayerState { id: string; type: 'text'; x: number; y: number; width: number; height: number; text: string; color: string; fontSize: number; fontWeight: number; align: 'left' | 'center' | 'right'; fontFamily?: 'display' | 'sans' | 'mono' | 'serif' | 'script'; letterSpacing?: number; italic?: boolean; stroke?: string; strokeWidth?: number; shadowColor?: string; shadowBlur?: number; rotation?: number; zIndex: number }
+export interface FrameTextLayer extends FrameLayerState { id: string; type: 'text'; x: number; y: number; width: number; height: number; text: string; color: string; fontSize: number; fontWeight: number; align: 'left' | 'center' | 'right'; fontFamily?: string; letterSpacing?: number; italic?: boolean; stroke?: string; strokeWidth?: number; shadowColor?: string; shadowBlur?: number; rotation?: number; zIndex: number }
 export interface FrameShapeLayer extends FrameLayerState { id: string; type: 'shape'; x: number; y: number; width: number; height: number; shape: FrameSlotShape; fill: string; stroke: string; strokeWidth: number; rotation?: number; zIndex: number }
 export interface FrameImageLayer extends FrameLayerState { id: string; type: 'image'; x: number; y: number; width: number; height: number; src: string; opacity: number; rotation?: number; zIndex: number }
 export interface FrameFreehandLayer extends FrameLayerState { id: string; type: 'freehand'; points: Array<{ x: number; y: number }>; color: string; strokeWidth: number; zIndex: number }
@@ -45,6 +46,7 @@ export interface TemplateManifest {
   output: { width: number; height: number; ppi: number }
   slots: FrameSlot[]
   layers?: FrameLayer[]
+  fontAssets?: FrameFontAsset[]
   background?: FrameBackground
   theme: FrameTheme
   builtIn?: boolean
@@ -177,12 +179,16 @@ export function parseFrameImport(source: string): TemplateManifest {
   })
   if (Array.isArray(value.layers) && value.layers.length > 100) throw new Error('A frame can contain at most 100 layers.')
   const layers = Array.isArray(value.layers) ? value.layers.map((layer, index) => parseLayer(layer, index)) : []
+  const fontAssets = Array.isArray(value.fontAssets) ? value.fontAssets.slice(0, 8).flatMap((font, index) => {
+    if (!font || typeof font !== 'object' || typeof font.id !== 'string' || typeof font.name !== 'string' || typeof font.family !== 'string' || typeof font.src !== 'string' || !/^data:font\/(woff2?|ttf|otf);base64,/i.test(font.src)) throw new Error(`Font ${index + 1} is invalid.`)
+    return [{ id: font.id.slice(0, 80), name: font.name.slice(0, 80), family: font.family.slice(0, 80), src: font.src }]
+  }) : []
   const theme = value.theme
   const safeTheme = theme && [theme.paper, theme.ink, theme.accent, theme.slotLight, theme.slotDark].every(color => typeof color === 'string')
     ? { id: typeof theme.id === 'string' ? theme.id : 'custom', label: typeof theme.label === 'string' ? theme.label : 'Custom', paper: theme.paper, ink: theme.ink, accent: theme.accent, slotLight: theme.slotLight, slotDark: theme.slotDark }
     : frameThemes[0]
   const background = value.background && ['solid', 'checker', 'grid', 'dots', 'stripes', 'gradient'].includes(value.background.kind) ? { kind: value.background.kind, color: value.background.color || safeTheme.paper, secondaryColor: value.background.secondaryColor || safeTheme.slotLight, scale: Math.max(2, Math.min(30, finiteOr(value.background.scale, 8))), angle: finiteOr(value.background.angle, 0) } : undefined
-  return { id: value.id.startsWith('custom-') ? value.id : `custom-${value.id}`, name: value.name.slice(0, 48), description: value.description?.slice(0, 120) || 'Imported custom layout.', rows: value.rows || 1, columns: value.columns || 1, requiredSlots: slots.length, printLabel: value.printLabel || '4 × 6 in postcard', output: { width: value.output.width || 1200, height: value.output.height || 1800, ppi: Math.max(72, Math.min(600, finiteOr(value.output.ppi, 300))) }, slots, layers, background, theme: safeTheme, createdAt: value.createdAt || new Date().toISOString() }
+  return { id: value.id.startsWith('custom-') ? value.id : `custom-${value.id}`, name: value.name.slice(0, 48), description: value.description?.slice(0, 120) || 'Imported custom layout.', rows: value.rows || 1, columns: value.columns || 1, requiredSlots: slots.length, printLabel: value.printLabel || '4 × 6 in postcard', output: { width: value.output.width || 1200, height: value.output.height || 1800, ppi: Math.max(72, Math.min(600, finiteOr(value.output.ppi, 300))) }, slots, layers, fontAssets, background, theme: safeTheme, createdAt: value.createdAt || new Date().toISOString() }
 }
 
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -198,7 +204,7 @@ function parseLayer(layer: FrameLayer, index: number): FrameLayer {
   }
   if (![layer.x, layer.y, layer.width, layer.height].every(number => typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= 1) || layer.width <= 0 || layer.height <= 0 || layer.x + layer.width > 1 || layer.y + layer.height > 1) throw new Error(`Layer ${index + 1} falls outside the canvas.`)
   const geometry = { x: layer.x, y: layer.y, width: layer.width, height: layer.height, rotation: finiteOr(layer.rotation, 0), zIndex }
-  if (layer.type === 'text') return { ...layer, ...geometry, text: String(layer.text ?? '').slice(0, 500), color: typeof layer.color === 'string' ? layer.color : '#193525', fontSize: Math.max(1, Math.min(30, finiteOr(layer.fontSize, 5))), fontWeight: Math.max(100, Math.min(900, finiteOr(layer.fontWeight, 700))), align: ['left', 'center', 'right'].includes(layer.align) ? layer.align : 'center', fontFamily: ['display', 'sans', 'mono', 'serif', 'script'].includes(layer.fontFamily ?? '') ? layer.fontFamily : 'sans' }
+  if (layer.type === 'text') return { ...layer, ...geometry, text: String(layer.text ?? '').slice(0, 500), color: typeof layer.color === 'string' ? layer.color : '#193525', fontSize: Math.max(1, Math.min(30, finiteOr(layer.fontSize, 5))), fontWeight: Math.max(100, Math.min(900, finiteOr(layer.fontWeight, 700))), align: ['left', 'center', 'right'].includes(layer.align) ? layer.align : 'center', fontFamily: typeof layer.fontFamily === 'string' && layer.fontFamily.length <= 80 ? layer.fontFamily : 'sans' }
   if (layer.type === 'image') {
     if (typeof layer.src !== 'string' || !/^data:image\/(png|jpeg|svg\+xml);/i.test(layer.src)) throw new Error(`Image layer ${index + 1} must contain an embedded PNG, JPEG, or SVG.`)
     return { ...layer, ...geometry, opacity: Math.max(.05, Math.min(1, finiteOr(layer.opacity, 1))) }

@@ -1,5 +1,6 @@
 import type { FrameBackground, FrameLayer, FrameSlot, FrameStickerLayer, TemplateManifest } from '../templates'
 import { radialShapePoints } from './frameGeometry'
+import { loadFrameFonts } from './frameFonts'
 import type { PhotoTransform } from '../types'
 
 export interface TemplateRenderOptions {
@@ -19,6 +20,7 @@ export interface PrintSheet {
 }
 
 export async function renderTemplate({ eventName, photos, template, outputJpegQuality, photoTransforms = [] }: TemplateRenderOptions): Promise<string> {
+  await loadFrameFonts(template)
   const canvas = document.createElement('canvas')
   canvas.width = template.output.width
   canvas.height = template.output.height
@@ -200,6 +202,7 @@ function canvasFont(font?: string): string {
   if (font === 'mono') return 'ui-monospace, Menlo, monospace'
   if (font === 'serif') return 'Georgia, serif'
   if (font === 'script') return 'Snell Roundhand, Apple Chancery, Brush Script MT, cursive'
+  if (font?.startsWith('LUMA Custom ')) return `"${font}", system-ui, sans-serif`
   return 'system-ui, sans-serif'
 }
 

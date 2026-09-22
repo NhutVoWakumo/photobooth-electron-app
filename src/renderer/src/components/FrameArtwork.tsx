@@ -1,9 +1,10 @@
-import { useRef, type CSSProperties, type JSX, type PointerEvent } from 'react'
+import { useEffect, useRef, type CSSProperties, type JSX, type PointerEvent } from 'react'
 import { getTemplateCopy, type FrameBackground, type FrameLayer, type FrameSlot, type TemplateManifest } from '../templates'
 import { StickerIcon } from './StickerIcon'
 import { tr, type Language } from '../i18n'
 import { shapeBorderRadius, shapeClipPath } from '../lib/frameGeometry'
 import type { PhotoTransform } from '../types'
+import { loadFrameFonts } from '../lib/frameFonts'
 
 interface FrameArtworkProps {
   template: TemplateManifest
@@ -20,6 +21,7 @@ interface FrameArtworkProps {
 
 export function FrameArtwork({ template, photos = [], activeSlot, onSlotClick, selected = false, label, language = 'vi', photoPositions = [], photoTransforms = [], onPhotoTransform }: FrameArtworkProps): JSX.Element {
   const dragRef = useRef<{ slotIndex: number; pointerId: number; x: number; y: number; transform: PhotoTransform } | null>(null)
+  useEffect(() => { void loadFrameFonts(template) }, [template])
   const getTransform = (index: number): PhotoTransform => photoTransforms[index] ?? { x: 0, y: ((photoPositions[index] ?? 50) - 50) * 2, scale: 1 }
   const pointerDown = (event: PointerEvent<HTMLElement>, index: number) => {
     if (!onPhotoTransform || !photos[index]) return
@@ -83,6 +85,7 @@ function fontFamily(font?: string): string {
   if (font === 'serif') return 'Georgia, Times New Roman, serif'
   if (font === 'script') return 'Snell Roundhand, Apple Chancery, Brush Script MT, cursive'
   if (font === 'display') return 'var(--font-display)'
+  if (font?.startsWith('LUMA Custom ')) return `"${font}", var(--font-body)`
   return 'var(--font-body)'
 }
 
