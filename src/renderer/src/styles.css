@@ -1793,6 +1793,13 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .studio-upload-button, .studio-edit-text { min-height: 2.7rem; padding: .6rem .75rem; color: var(--color-text); background: var(--color-surface); border: 1px dashed var(--color-line-strong); border-radius: var(--radius-sm); font-size: .72rem; font-weight: 750; text-align: left; }
 .studio-upload-button:hover, .studio-edit-text:hover { color: var(--color-accent-ink); border-color: var(--color-accent); background: var(--color-blue); }
 .studio-font-asset { min-height: 2.5rem; padding: .5rem .65rem; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-sm); font-size: .9rem; text-align: left; }
+.studio-asset-library small, .studio-asset-library p { margin: 0; color: var(--color-text-muted); font-size: .66rem; line-height: 1.45; overflow-wrap: anywhere; }
+.studio-library-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; }
+.studio-library-item { display: grid; min-width: 0; gap: .25rem; padding: .35rem; color: var(--color-text-soft); background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-sm); }
+.studio-library-item:hover { color: var(--color-accent-ink); border-color: var(--color-accent); background: var(--color-blue); }
+.studio-library-item img, .studio-library-item span { display: grid; width: 100%; aspect-ratio: 1; place-items: center; object-fit: contain; overflow: hidden; }
+.studio-library-item span { font-size: 1.35rem; }
+.studio-library-item em { overflow: hidden; font-size: .55rem; font-style: normal; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .studio-font-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; margin-top: .4rem; }
 .studio-font-picker button { min-width: 0; min-height: 2.75rem; padding: .45rem .5rem; overflow: hidden; color: var(--color-text-soft); background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-sm); font-size: .82rem; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .studio-font-picker button.active { color: var(--color-accent-ink); background: var(--color-blue); border-color: var(--color-accent); }
@@ -1814,6 +1821,8 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .studio-color-popover input { min-height: 2.45rem; text-transform: uppercase; }
 .studio-text-editing { cursor: text; outline: 2px solid var(--color-accent); outline-offset: 2px; user-select: text; white-space: pre-wrap; }
 .studio-colors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.studio-tools > *, .studio-inspector > * { min-width: 0; }
+.studio-tools small, .studio-inspector small { overflow-wrap: anywhere; }
 .studio-dimensions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
 .studio-dimensions input { min-height: 2.55rem; padding-inline: .45rem; }
 .studio-colors input[type="color"], .studio-inspector input[type="color"] { min-height: 2.6rem; padding: .2rem; }
@@ -1857,7 +1866,8 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 @media (max-width: 1050px) {
   .frame-archive-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .frame-studio-grid { grid-template-columns: 12rem minmax(18rem, 1fr); }
-  .studio-inspector { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: 15rem; border-top: 1px solid var(--color-line); border-left: 0; }
+  .studio-inspector { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 19rem; border-top: 1px solid var(--color-line); border-left: 0; }
+  .studio-inspector-title, .studio-layer-list { grid-column: 1 / -1; }
   .studio-layer-list { max-height: 11rem; overflow: auto; }
 }
 

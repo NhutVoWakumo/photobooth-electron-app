@@ -6,6 +6,7 @@ import { tr, type Language } from '../i18n'
 import { shapeBorderRadius, shapeClipPath } from '../lib/frameGeometry'
 import { exportFramePack, importFramePack } from '../lib/framePack'
 import { loadFrameFonts } from '../lib/frameFonts'
+import { listStudioAssets, saveStudioAsset, type StudioAsset } from '../lib/studioAssetStore'
 
 interface FrameStudioProps {
   language: Language
@@ -70,6 +71,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
   const [selection, setSelection] = useState<Selection>(() => ({ kind: 'slot', id: draft.slots[0].id }))
   const [drawing, setDrawing] = useState(false)
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
+  const [assetLibrary, setAssetLibrary] = useState<StudioAsset[]>([])
   const [status, setStatus] = useState('')
   const assetPlacementRef = useRef<'background' | 'overlay' | 'sticker'>('overlay')
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -80,6 +82,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
   const drawingLayerRef = useRef<string | null>(null)
 
   useEffect(() => { void loadFrameFonts(draft) }, [draft])
+  useEffect(() => { void listStudioAssets().then(setAssetLibrary).catch(() => setStatus(tr(language, 'Không thể mở thư viện asset local.', 'Could not open the local asset library.'))) }, [language])
 
   const setDraft = (update: TemplateManifest | ((current: TemplateManifest) => TemplateManifest)) => {
     const current = draftRef.current
@@ -270,7 +273,12 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
     const reader = new FileReader()
     reader.onload = () => {
       const sticker = assetPlacementRef.current === 'sticker'
-      addLayer({ id: `image-${crypto.randomUUID()}`, type: 'image', x: sticker ? .68 : 0, y: sticker ? .08 : 0, width: sticker ? .22 : 1, height: sticker ? .12 : 1, src: String(reader.result), opacity: 1, zIndex: assetPlacementRef.current === 'background' ? 0 : 30, locked: assetPlacementRef.current === 'background' })
+      const src = String(reader.result)
+      addLayer({ id: `image-${crypto.randomUUID()}`, type: 'image', x: sticker ? .68 : 0, y: sticker ? .08 : 0, width: sticker ? .22 : 1, height: sticker ? .12 : 1, src, opacity: 1, zIndex: assetPlacementRef.current === 'background' ? 0 : 30, locked: assetPlacementRef.current === 'background' })
+      if (sticker) {
+        const asset: StudioAsset = { id: `sticker-${crypto.randomUUID()}`, kind: 'sticker', name: file.name.replace(/\.[^.]+$/, ''), src, createdAt: new Date().toISOString() }
+        void saveStudioAsset(asset).then(() => setAssetLibrary(current => [asset, ...current])).catch(() => setStatus(tr(language, 'Sticker đã thêm vào frame nhưng chưa lưu được vào thư viện.', 'Sticker was added to this frame but could not be saved to the library.')))
+      }
     }
     reader.readAsDataURL(file)
     event.target.value = ''
@@ -289,10 +297,23 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
       const family = `LUMA Custom ${crypto.randomUUID()}`
       const font: FrameFontAsset = { id: `font-${crypto.randomUUID()}`, name: file.name.replace(/\.[^.]+$/, ''), family, src: String(reader.result).replace(/^data:[^;]+/, `data:${mime}`) }
       setDraft(current => ({ ...current, fontAssets: [...(current.fontAssets ?? []), font] }))
+      const asset: StudioAsset = { id: `asset-${font.id}`, kind: 'font', name: font.name, family, src: font.src, createdAt: new Date().toISOString() }
+      void saveStudioAsset(asset).then(() => setAssetLibrary(current => [asset, ...current])).catch(() => setStatus(tr(language, 'Font đã thêm vào frame nhưng chưa lưu được vào thư viện.', 'Font was added to this frame but could not be saved to the library.')))
       void new FontFace(family, `url(${font.src})`).load().then(face => { document.fonts.add(face); setStatus(tr(language, `Đã thêm font ${font.name}.`, `${font.name} is ready to use.`)) }).catch(() => setStatus(tr(language, 'Không thể đọc font này.', 'This font could not be loaded.')))
     }
     reader.readAsDataURL(file)
     event.target.value = ''
+  }
+  const useLibraryAsset = (asset: StudioAsset) => {
+    if (asset.kind === 'sticker') {
+      const layer: FrameLayer = { id: `image-${crypto.randomUUID()}`, type: 'image', x: .68, y: .08, width: .22, height: .12, src: asset.src, opacity: 1, zIndex: 30 }
+      addLayer(layer)
+      return
+    }
+    if (!asset.family) return
+    const font: FrameFontAsset = { id: `font-${crypto.randomUUID()}`, name: asset.name, family: asset.family, src: asset.src }
+    setDraft(current => ({ ...current, fontAssets: current.fontAssets?.some(item => item.family === font.family) ? current.fontAssets : [...(current.fontAssets ?? []), font] }))
+    if (selectedLayer?.type === 'text') updateLayer(selectedLayer.id, { fontFamily: font.family })
   }
 
   const exportFrame = () => {
@@ -326,6 +347,7 @@ export function FrameStudio({ language, initialTemplate, onClose, onSave }: Fram
         <input ref={designRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/svg+xml,.png,.jpg,.jpeg,.svg" onChange={handleDesignAsset} />
         <div className="studio-tool-group"><strong>{tr(language, 'Font của frame', 'Frame fonts')}</strong><button className="studio-upload-button" type="button" onClick={() => fontRef.current?.click()}>{tr(language, 'Upload font', 'Upload font')}</button><small>{tr(language, 'WOFF2 nên dùng nhất; font được nhúng khi export Frame Pack.', 'WOFF2 is recommended; fonts are embedded in Frame Packs.')}</small>{(draft.fontAssets ?? []).map(font => <button key={font.id} className="studio-font-asset" type="button" style={{ fontFamily: `\"${font.family}\", var(--font-body)` }} onClick={() => selectedLayer?.type === 'text' && updateLayer(selectedLayer.id, { fontFamily: font.family })}>{font.name}</button>)}</div>
         <input ref={fontRef} className="visually-hidden" type="file" accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf" onChange={handleFont} />
+        <div className="studio-tool-group studio-asset-library"><strong>{tr(language, 'Thư viện cá nhân', 'Your library')}</strong><small>{tr(language, 'Sticker và font đã upload có thể dùng lại cho mọi frame trên máy này.', 'Uploaded stickers and fonts can be reused in every frame on this computer.')}</small>{assetLibrary.length === 0 ? <p>{tr(language, 'Chưa có asset nào. Upload sticker hoặc font để bắt đầu.', 'No assets yet. Upload a sticker or font to start.')}</p> : <div className="studio-library-grid">{assetLibrary.map(asset => <button key={asset.id} type="button" className={`studio-library-item ${asset.kind}`} onClick={() => useLibraryAsset(asset)} title={asset.name}>{asset.kind === 'sticker' ? <img src={asset.src} alt="" /> : <span style={{ fontFamily: `\"${asset.family}\", var(--font-body)` }}>Aa</span>}<em>{asset.name}</em></button>)}</div>}</div>
         <div className="studio-tool-group"><strong>{tr(language, 'Nền canvas', 'Canvas background')}</strong><div className="studio-pattern-picker">{(['solid', 'checker', 'grid', 'dots', 'stripes', 'gradient'] as FrameBackgroundKind[]).map(pattern => <button key={pattern} type="button" className={`${draft.background?.kind === pattern ? 'active' : ''} pattern-${pattern}`} onClick={() => setDraft(current => ({ ...current, background: { kind: pattern, color: current.background?.color ?? current.theme.paper, secondaryColor: current.background?.secondaryColor ?? current.theme.slotLight, scale: current.background?.scale ?? 8, angle: current.background?.angle ?? 45 } }))}><i /><span>{pattern}</span></button>)}</div><label>{tr(language, 'Hoạ tiết', 'Pattern')}<select value={draft.background?.kind ?? 'solid'} onChange={event => setDraft(current => ({ ...current, background: { kind: event.target.value as FrameBackgroundKind, color: current.background?.color ?? current.theme.paper, secondaryColor: current.background?.secondaryColor ?? current.theme.slotLight, scale: current.background?.scale ?? 8, angle: current.background?.angle ?? 45 } }))}><option value="solid">Solid</option><option value="checker">Checker</option><option value="grid">Grid</option><option value="dots">Dots</option><option value="stripes">Stripes</option><option value="gradient">Gradient</option></select></label><div className="studio-colors"><label>{tr(language, 'Màu nền', 'Base')}<input type="color" value={draft.background?.color ?? draft.theme.paper} onChange={event => setDraft(current => ({ ...current, background: { kind: current.background?.kind ?? 'solid', color: event.target.value, secondaryColor: current.background?.secondaryColor ?? current.theme.slotLight, scale: current.background?.scale ?? 8, angle: current.background?.angle ?? 45 } }))} /></label><label>{tr(language, 'Màu phụ', 'Second')}<input type="color" value={draft.background?.secondaryColor ?? draft.theme.slotLight} onChange={event => setDraft(current => ({ ...current, background: { kind: current.background?.kind ?? 'solid', color: current.background?.color ?? current.theme.paper, secondaryColor: event.target.value, scale: current.background?.scale ?? 8, angle: current.background?.angle ?? 45 } }))} /></label></div>{draft.background?.kind !== 'solid' && <label>{tr(language, 'Độ lớn hoạ tiết', 'Pattern scale')}<input type="range" min="2" max="30" step="1" value={draft.background?.scale ?? 8} onChange={event => setDraft(current => ({ ...current, background: { kind: current.background?.kind ?? 'solid', color: current.background?.color ?? current.theme.paper, secondaryColor: current.background?.secondaryColor ?? current.theme.slotLight, scale: Number(event.target.value), angle: current.background?.angle ?? 45 } }))} /></label>}</div>
         <label>{tr(language, 'Theme bắt đầu', 'Theme preset')}<select value={frameThemes.some(theme => theme.id === draft.theme.id) ? draft.theme.id : 'custom'} onChange={event => { const theme = frameThemes.find(item => item.id === event.target.value); if (theme) setDraft(current => ({ ...current, theme: { ...theme } })) }}><option value="custom">Custom</option>{frameThemes.map(theme => <option value={theme.id} key={theme.id}>{theme.label}</option>)}</select></label>
         <div className="studio-colors"><label>{tr(language, 'Nền', 'Paper')}<input type="color" value={draft.theme.paper} onChange={event => setDraft(current => ({ ...current, theme: { ...current.theme, id: 'custom', label: 'Custom', paper: event.target.value } }))} /></label><label>{tr(language, 'Chữ', 'Ink')}<input type="color" value={draft.theme.ink} onChange={event => setDraft(current => ({ ...current, theme: { ...current.theme, id: 'custom', label: 'Custom', ink: event.target.value } }))} /></label><label>{tr(language, 'Màu chính', 'Accent')}<input type="color" value={draft.theme.accent} onChange={event => setDraft(current => ({ ...current, theme: { ...current.theme, id: 'custom', label: 'Custom', accent: event.target.value } }))} /></label><label>{tr(language, 'Ô ảnh sáng', 'Photo light')}<input type="color" value={draft.theme.slotLight} onChange={event => setDraft(current => ({ ...current, theme: { ...current.theme, id: 'custom', label: 'Custom', slotLight: event.target.value } }))} /></label><label>{tr(language, 'Ô ảnh tối', 'Photo dark')}<input type="color" value={draft.theme.slotDark} onChange={event => setDraft(current => ({ ...current, theme: { ...current.theme, id: 'custom', label: 'Custom', slotDark: event.target.value } }))} /></label></div>
