@@ -3,6 +3,7 @@ import { tr, type Language } from '../i18n'
 import type { TemplateManifest } from '../templates'
 import type { BoothSession, SessionFrameSet } from '../types'
 import { FrameArtwork } from './FrameArtwork'
+import { PageShell } from './PageShell'
 
 interface SessionFramesProps {
   language: Language
@@ -19,8 +20,7 @@ function NewFrameCard({ language, onClick }: { language: Language; onClick: () =
 }
 
 export function SessionFrames({ language, session, templates, onBack, onNew, onOpen, onDelete }: SessionFramesProps): JSX.Element {
-  return <section className="session-frames-page" aria-labelledby="session-frames-title">
-    <header className="session-frames-heading"><div><button className="back-link" onClick={onBack}>← {tr(language, 'Các phiên', 'Sessions')}</button><p className="eyebrow">{tr(language, 'Phiên làm việc', 'Working session')}</p><h1 id="session-frames-title">{session.name}</h1><p>{tr(language, `${session.frames.length} frame trong phiên này`, `${session.frames.length} frame${session.frames.length === 1 ? '' : 's'} in this session`)}</p></div></header>
+  return <PageShell className="session-frames-page" eyebrow={tr(language, 'Phiên làm việc', 'Working session')} title={session.name} description={tr(language, `${session.frames.length} frame trong phiên này`, `${session.frames.length} frame${session.frames.length === 1 ? '' : 's'} in this session`)} backLabel={tr(language, 'Các phiên', 'Sessions')} onBack={onBack}>
     <div className="session-frame-list">
       {session.frames.map((frame, index) => {
         const template = templates.find(item => item.id === frame.templateId) ?? templates[0]
@@ -31,5 +31,5 @@ export function SessionFrames({ language, session, templates, onBack, onNew, onO
       })}
       <NewFrameCard language={language} onClick={onNew} />
     </div>
-  </section>
+  </PageShell>
 }

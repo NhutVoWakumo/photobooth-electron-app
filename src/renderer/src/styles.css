@@ -1225,6 +1225,40 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .photo-lightbox img { max-width: min(100%, 70rem); max-height: 80vh; object-fit: contain; }
 .lightbox-close { position: absolute; top: 1.5rem; right: 1.5rem; width: 3rem; height: 3rem; color: var(--color-paper); background: transparent; border: 1px solid rgba(255,255,255,.45); border-radius: 50%; font-size: 1.5rem; }
 
+/* Shared page shell: one predictable header rail for every setup/library page. */
+.design-page { width: min(100%, 100rem); min-height: 100%; margin: auto; padding: clamp(1.5rem, 3.2vw, 3.5rem) clamp(1rem, 4vw, 4rem) 3rem; overflow: auto; }
+.design-page-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: clamp(1.25rem, 4vw, 4rem); margin-bottom: clamp(2rem, 4vw, 4rem); padding-bottom: 1.5rem; border-bottom: 1px solid var(--color-line); }
+.design-page-heading { min-width: 0; }
+.design-page-heading h1 { margin: .7rem 0 .75rem; font-size: clamp(2.7rem, 6vw, 5.6rem); line-height: .9; letter-spacing: -.065em; }
+.design-page-description { max-width: 50rem; margin: 0; color: var(--color-text-soft); font-size: 1rem; line-height: 1.55; }
+.design-page-back { display: inline-flex; align-items: center; gap: .45rem; min-height: 3.5rem; padding: .75rem 1rem; color: var(--color-text); background: var(--color-control); border: 1px solid var(--color-line-strong); border-radius: .65rem; font-size: 1rem; font-weight: 800; }
+.design-page-back:hover { color: var(--color-paper-ink); background: var(--color-blue-soft); border-color: var(--color-blue); }
+.design-page-actions { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; min-width: 12rem; }
+.design-page-actions .action-row { margin: 0; }
+.design-page-actions button { min-height: 3.75rem; }
+.design-page.template-picker { display: block; }
+.design-page.template-picker .template-list { margin-top: 0; }
+.design-page.frame-preview-page { display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 34rem); align-items: center; justify-content: center; gap: clamp(2rem, 7vw, 7rem); }
+.design-page.frame-preview-page > .design-page-header { grid-column: 1 / -1; width: 100%; margin-bottom: 0; }
+.design-page.frame-preview-page .frame-preview-copy { max-width: 34rem; }
+
+@media (max-width: 760px) {
+  .design-page-header { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 1.25rem; }
+  .design-page-actions { justify-content: flex-start; min-width: 0; }
+  .design-page-actions button { flex: 1; }
+  .design-page.frame-preview-page { display: block; }
+  .design-page.frame-preview-page .frame-preview-art { margin: 0 auto 2rem; }
+}
+
+@media (max-width: 480px) {
+  .design-page { padding-inline: 1rem; }
+  .design-page-header { margin-bottom: 2rem; padding-bottom: 1rem; }
+  .design-page-heading h1 { font-size: clamp(2.4rem, 13vw, 3.7rem); }
+  .design-page-back { width: 100%; justify-content: center; }
+  .design-page-actions { flex-direction: column; }
+  .design-page-actions button { width: 100%; flex: none; }
+}
+
 .slot-capture-page { display: grid; grid-template-rows: auto 1fr; width: min(100%, 92rem); margin: auto; padding: clamp(5rem, 7vw, 7rem) clamp(1.25rem, 5vw, 5rem) 3rem; }
 .slot-capture-heading h1 { font-size: clamp(3rem, 5vw, 5.5rem); }
 .slot-camera-workspace { display: grid; justify-items: center; align-content: center; gap: var(--space-5); min-height: 0; }

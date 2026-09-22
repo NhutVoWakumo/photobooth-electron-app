@@ -5,6 +5,7 @@ import type { TemplateManifest } from '../templates'
 import type { BoothSettings, SessionFrameSet } from '../types'
 import { FrameArtwork } from './FrameArtwork'
 import { OutputEditor } from './OutputEditor'
+import { PageShell } from './PageShell'
 
 export function FrameSetEditor({ language, settings, sessionName, frame, template, onBack, onChange, onCaptureSlot }: { language: Language; settings: BoothSettings; sessionName: string; frame: SessionFrameSet; template: TemplateManifest; onBack: () => void; onChange: (frame: SessionFrameSet) => void; onCaptureSlot: (slotIndex: number) => void }): JSX.Element {
   const [activeSlot, setActiveSlot] = useState(0)
@@ -34,8 +35,7 @@ export function FrameSetEditor({ language, settings, sessionName, frame, templat
   const movePhoto = (event: DragEvent, slotIndex: number) => { event.preventDefault(); const photoId = event.dataTransfer.getData('text/luma-photo'); if (photoId) assignPhoto(slotIndex, photoId) }
   const filled = assignments.filter(Boolean).length
 
-  return <section className="session-detail-page" aria-labelledby="session-detail-title">
-    <header className="session-detail-heading"><div><button className="back-link" onClick={onBack}>← {sessionName}</button><p className="eyebrow">{tr(language, 'Chỉnh sửa frame đã chụp', 'Edit captured frame')}</p><h1 id="session-detail-title">{template.name}</h1><p>{tr(language, `${frame.photos.length} ảnh đã chụp · ${filled}/${template.requiredSlots} ô đã điền`, `${frame.photos.length} captures · ${filled}/${template.requiredSlots} slots filled`)}</p></div><div className="session-detail-actions"><button className="primary-button" disabled={filled !== template.requiredSlots} onClick={() => setShowOutput(value => !value)}>{showOutput ? tr(language, 'Đóng bản in', 'Close output') : tr(language, 'In / xuất ảnh', 'Print / export')}</button></div></header>
+  return <PageShell className="session-detail-page" eyebrow={tr(language, 'Chỉnh sửa frame đã chụp', 'Edit captured frame')} title={template.name} description={tr(language, `${frame.photos.length} ảnh đã chụp · ${filled}/${template.requiredSlots} ô đã điền`, `${frame.photos.length} captures · ${filled}/${template.requiredSlots} slots filled`)} backLabel={sessionName} onBack={onBack} actions={<button className="primary-button" disabled={filled !== template.requiredSlots} onClick={() => setShowOutput(value => !value)}>{showOutput ? tr(language, 'Đóng bản in', 'Close output') : tr(language, 'In / xuất ảnh', 'Print / export')}</button>}>
 
     {showOutput && <OutputEditor language={language} settings={settings} template={template} frame={frame} assignments={assignments} onChange={onChange} onClose={() => setShowOutput(false)} onSaveExit={onBack} />}
 
@@ -51,5 +51,5 @@ export function FrameSetEditor({ language, settings, sessionName, frame, templat
       </main>
     </div>
     {previewPhotoId && <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label={tr(language, 'Xem ảnh', 'Photo preview')}><button className="lightbox-close" onClick={() => setPreviewPhotoId(null)}>×</button><img src={frame.photos.find(photo => photo.id === previewPhotoId)?.dataUrl} alt={tr(language, 'Ảnh phóng to', 'Enlarged capture')} /></div>}
-  </section>
+  </PageShell>
 }
