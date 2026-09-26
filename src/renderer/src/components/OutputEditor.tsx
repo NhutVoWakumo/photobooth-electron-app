@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { tr, type Language } from '../i18n'
-import { renderTemplate } from '../lib/renderTemplate'
+import { renderPrintSheet, renderTemplate } from '../lib/renderTemplate'
 import type { TemplateManifest } from '../templates'
 import type { BoothSettings, PhotoTransform, SessionFrameSet } from '../types'
 import { FrameArtwork } from './FrameArtwork'
@@ -21,8 +21,9 @@ const DEFAULT_TRANSFORM: PhotoTransform = { x: 0, y: 0, scale: 1 }
 
 export function OutputEditor({ language, settings, template, frame, assignments, onChange, onClose, onSaveExit, onDelete }: Props): JSX.Element {
   const [selectedSlot, setSelectedSlot] = useState(0)
-  const [status, setStatus] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'exporting' | 'done' | 'error' | 'printing' | 'printed' | 'print-error'>('idle')
   const [outputPath, setOutputPath] = useState('')
+  const [printError, setPrintError] = useState('')
   const transforms = Array.from({ length: template.requiredSlots }, (_, index) => frame.slotTransforms?.[index] ?? { x: 0, y: ((frame.slotPositions?.[index] ?? 50) - 50) * 2, scale: 1 })
   const activeTransform = transforms[selectedSlot] ?? DEFAULT_TRANSFORM
 
@@ -44,6 +45,21 @@ export function OutputEditor({ language, settings, template, frame, assignments,
       setStatus('error')
     }
   }
+  const printImage = async () => {
+    if (!window.booth) { setPrintError(tr(language, 'Chỉ in được trong ứng dụng desktop.', 'Printing requires the desktop app.')); setStatus('print-error'); return }
+    if (!settings.printerName || settings.printerName === 'none') { setPrintError(tr(language, 'Hãy chọn máy in trong Settings trước.', 'Select a printer in Settings first.')); setStatus('print-error'); return }
+    setStatus('printing')
+    setPrintError('')
+    try {
+      const output = await renderTemplate({ eventName: settings.eventName, photos: assignments.filter((photo): photo is string => Boolean(photo)), template, outputJpegQuality: settings.outputJpegQuality, photoTransforms: transforms })
+      const sheet = await renderPrintSheet(output, template, settings.outputJpegQuality)
+      await window.booth.printImage({ printerName: settings.printerName, dataUrl: sheet.dataUrl, width: sheet.width, height: sheet.height, ppi: template.output.ppi })
+      setStatus('printed')
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : String(error))
+      setStatus('print-error')
+    }
+  }
 
   return <div className="quick-print-preview" role="dialog" aria-modal="true" aria-labelledby="output-editor-title">
     <header><div><p className="eyebrow">{tr(language, 'Bản ảnh cuối', 'Final image')}</p><h1 id="output-editor-title">{tr(language, 'Căn ảnh rồi xuất.', 'Adjust, then export.')}</h1></div><button onClick={onClose} aria-label={tr(language, 'Đóng', 'Close')}>×</button></header>
@@ -55,9 +71,11 @@ export function OutputEditor({ language, settings, template, frame, assignments,
       <div className="crop-control-heading"><span>{tr(language, `Ảnh ${selectedSlot + 1}`, `Photo ${selectedSlot + 1}`)}</span><strong>{tr(language, 'Kéo để căn · trượt để zoom', 'Drag to position · slide to zoom')}</strong></div>
       <label className="zoom-control"><span>{tr(language, 'Thu phóng', 'Zoom')}</span><output>{Math.round(activeTransform.scale * 100)}%</output><input type="range" min="1" max="2.5" step="0.01" value={activeTransform.scale} onChange={event => updateTransform(selectedSlot, { ...activeTransform, scale: Number(event.target.value) })} /></label>
       <button className="crop-reset" onClick={resetCrop}>{tr(language, 'Đặt lại crop', 'Reset crop')}</button>
-      <div className="output-primary-actions"><button className="quick-export-primary" disabled={status === 'exporting'} onClick={() => void exportImage()}>{status === 'exporting' ? tr(language, 'Đang xuất…', 'Exporting…') : tr(language, 'Xuất ảnh', 'Export image')}</button><button className="quick-print-primary" onClick={() => window.print()}>{tr(language, 'In ngay', 'Print now')}</button></div>
+      <div className="output-primary-actions"><button className="quick-export-primary" disabled={status === 'exporting' || status === 'printing'} onClick={() => void exportImage()}>{status === 'exporting' ? tr(language, 'Đang xuất…', 'Exporting…') : tr(language, 'Xuất ảnh', 'Export image')}</button><button className="quick-print-primary" disabled={status === 'exporting' || status === 'printing'} onClick={() => void printImage()}>{status === 'printing' ? tr(language, 'Đang gửi lệnh in…', 'Sending to printer…') : tr(language, 'In ngay', 'Print now')}</button></div>
       {status === 'done' && <div className="export-success" role="status"><strong>{tr(language, 'Đã lưu và copy vào clipboard', 'Saved and copied to clipboard')}</strong><span>{outputPath}</span></div>}
       {status === 'error' && <p className="export-error" role="alert">{tr(language, 'Không thể xuất ảnh. Hãy mở bằng ứng dụng desktop rồi thử lại.', 'Could not export. Open the desktop app and try again.')}</p>}
+      {status === 'printed' && <p className="export-success" role="status">{tr(language, 'Đã gửi ảnh vào hàng đợi in. Hãy kiểm tra máy in.', 'Sent to the print queue. Check the printer.')}</p>}
+      {status === 'print-error' && <p className="export-error" role="alert">{printError}</p>}
       <div className="output-secondary-actions">{onSaveExit && <button onClick={onSaveExit}>{tr(language, 'Lưu & thoát', 'Save & exit')}</button>}<button onClick={onClose}>{tr(language, 'Tiếp tục chỉnh', 'Keep editing')}</button>{onDelete && <button className="quick-delete" onClick={onDelete}>{tr(language, 'Xóa frame', 'Delete frame')}</button>}</div>
     </aside>
   </div>

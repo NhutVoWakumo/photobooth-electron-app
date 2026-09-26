@@ -19,6 +19,7 @@ export interface BoothSettings {
   captureJpegQuality: number
   outputJpegQuality: number
   motionLevel: 'low' | 'medium' | 'high'
+  timingDefaultsVersion?: number
   enabledFrameIds: string[]
   customFrames: TemplateManifest[]
 }
@@ -26,6 +27,7 @@ export interface BoothSettings {
 export interface SessionPhoto {
   id: string
   dataUrl: string
+  previewDataUrl?: string
   capturedAt: string
   pinned: boolean
   slotAspectRatio: number
@@ -69,11 +71,12 @@ export const defaultSettings: BoothSettings = {
   extraCaptureAllowance: 2,
   retakePolicy: 'limited',
   preCaptureDelayMs: 1000,
-  postCaptureReviewMs: 3000,
-  countdownSeconds: 3,
+  postCaptureReviewMs: 2000,
+  countdownSeconds: 10,
   captureJpegQuality: 0.92,
   outputJpegQuality: 0.94,
   motionLevel: 'medium',
+  timingDefaultsVersion: 2,
   enabledFrameIds: ['classic-4x1', 'grid-3x2', 'portrait-1x1'],
   customFrames: []
 }

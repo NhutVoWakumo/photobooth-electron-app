@@ -25,8 +25,11 @@ function normalizeSettings(value: unknown): BoothSettings {
     const knownFrameIds = new Set([...templates, ...customFrames].map(frame => frame.id))
     const storedEnabled = Array.isArray(saved.enabledFrameIds) ? saved.enabledFrameIds.filter((id): id is string => typeof id === 'string' && knownFrameIds.has(id)) : defaultSettings.enabledFrameIds
     const enabledFrameIds = [...new Set([...storedEnabled, ...referenceFrames.map(frame => frame.id)])]
-    const postCaptureReviewMs = saved.postCaptureReviewMs === 2000 ? 3000 : (saved.postCaptureReviewMs ?? defaultSettings.postCaptureReviewMs)
-    return { ...defaultSettings, ...saved, postCaptureReviewMs, customFrames, enabledFrameIds: enabledFrameIds.length > 0 ? enabledFrameIds : defaultSettings.enabledFrameIds }
+    // Migrate the previous defaults once; other custom timing values survive.
+    const legacyDefaults = !saved.timingDefaultsVersion
+    const countdownSeconds = legacyDefaults && saved.countdownSeconds === 3 ? 10 : (saved.countdownSeconds ?? defaultSettings.countdownSeconds)
+    const postCaptureReviewMs = legacyDefaults && saved.postCaptureReviewMs === 3000 ? 2000 : (saved.postCaptureReviewMs ?? defaultSettings.postCaptureReviewMs)
+    return { ...defaultSettings, ...saved, countdownSeconds, postCaptureReviewMs, timingDefaultsVersion: 2, customFrames, enabledFrameIds: enabledFrameIds.length > 0 ? enabledFrameIds : defaultSettings.enabledFrameIds }
   } catch { return defaultSettings }
 }
 
@@ -75,7 +78,10 @@ export function App(): JSX.Element {
 
   const persistSession = (session: BoothSession) => {
     setSessions(current => [session, ...current.filter(item => item.id !== session.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
-    void saveStoredSession(session).catch(() => setStorageStatus('error'))
+    // Let React paint the captured preview before cloning a large session over IPC.
+    window.setTimeout(() => {
+      void saveStoredSession(session).catch(() => setStorageStatus('error'))
+    }, 50)
   }
   const createSession = () => {
     const session = newSession(sessions.length)
@@ -122,23 +128,17 @@ export function App(): JSX.Element {
     setActiveSlot(slotIndex)
     setStage('slot-capture')
   }
-  const acceptCapture = (dataUrl: string, aspectRatio: number, slotIndex = activeSlot) => {
-    if (!activeSessionId || !activeFrameId) return
-    setSessions(current => {
-      const session = current.find(item => item.id === activeSessionId)
-      const frame = session?.frames.find(item => item.id === activeFrameId)
-      if (!session || !frame) return current
-      const now = new Date().toISOString()
-      const photo = { id: crypto.randomUUID(), dataUrl, capturedAt: now, pinned: false, slotAspectRatio: aspectRatio }
-      const assignments = [...frame.assignments]
-      assignments[slotIndex] = photo.id
-      const nextEmptySlot = assignments.findIndex(value => !value)
-      const nextFrame: SessionFrameSet = { ...frame, photos: [...frame.photos, photo], assignments, status: nextEmptySlot === -1 ? 'complete' : 'draft', updatedAt: now }
-      const nextSession = { ...session, frames: session.frames.map(item => item.id === nextFrame.id ? nextFrame : item), updatedAt: now }
-      void saveStoredSession(nextSession).catch(() => setStorageStatus('error'))
-      setActiveSlot(nextEmptySlot === -1 ? slotIndex : nextEmptySlot)
-      return [nextSession, ...current.filter(item => item.id !== nextSession.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    })
+  const acceptCapture = (dataUrl: string, previewDataUrl: string, aspectRatio: number, slotIndex = activeSlot) => {
+    if (!activeSession || !activeFrame) return
+    const now = new Date().toISOString()
+    const photo = { id: crypto.randomUUID(), dataUrl, previewDataUrl, capturedAt: now, pinned: false, slotAspectRatio: aspectRatio }
+    const assignments = [...activeFrame.assignments]
+    assignments[slotIndex] = photo.id
+    const nextEmptySlot = assignments.findIndex(value => !value)
+    const nextFrame: SessionFrameSet = { ...activeFrame, photos: [...activeFrame.photos, photo], assignments, status: nextEmptySlot === -1 ? 'complete' : 'draft', updatedAt: now }
+    const nextSession = { ...activeSession, frames: activeSession.frames.map(item => item.id === nextFrame.id ? nextFrame : item), updatedAt: now }
+    persistSession(nextSession)
+    setActiveSlot(nextEmptySlot === -1 ? slotIndex : nextEmptySlot)
   }
 
   const updateActiveFrame = (frame: SessionFrameSet) => {
@@ -157,14 +157,14 @@ export function App(): JSX.Element {
   const removeFrame = (frame: SessionFrameSet) => {
     if (!activeSession || !window.confirm(settings.language === 'vi' ? 'Xóa frame này khỏi session?' : 'Delete this frame from the session?')) return
     persistSession({ ...activeSession, frames: activeSession.frames.filter(item => item.id !== frame.id), updatedAt: new Date().toISOString() })
-    if (activeFrameId === frame.id) { setActiveFrameId(null); setStage('session-detail') }
+    if (activeFrameId === frame.id) { camera.stopCamera(); setActiveFrameId(null); setStage('session-detail') }
   }
 
   let content: JSX.Element
   if (stage === 'session-list') content = <SessionList language={settings.language} sessions={sessions} templates={[...templates, ...settings.customFrames]} onBack={() => setStage('idle')} onCreate={createSession} onOpen={openSession} onDelete={removeSession} />
   else if (stage === 'template-picker') content = <TemplatePicker language={settings.language} templates={availableTemplates} onChoose={createFrameFromTemplate} onBack={() => setStage('session-detail')} />
   else if (stage === 'slot-capture' && activeSession && activeFrame) {
-    content = <SlotCapture key={activeFrame.id} camera={camera} language={settings.language} settings={settings} template={activeTemplate} frame={activeFrame} initialSlot={activeSlot} onAccept={acceptCapture} onChange={updateActiveFrame} onDelete={() => removeFrame(activeFrame)} onCancel={() => setStage('session-detail')} />
+    content = <SlotCapture key={activeFrame.id} camera={camera} language={settings.language} settings={settings} template={activeTemplate} frame={activeFrame} initialSlot={activeSlot} onAccept={acceptCapture} onChange={updateActiveFrame} onDelete={() => removeFrame(activeFrame)} onCancel={() => { camera.stopCamera(); setStage('session-detail') }} />
   } else if (stage === 'frame-editor' && activeSession && activeFrame) content = <FrameSetEditor language={settings.language} settings={settings} sessionName={activeSession.name} frame={activeFrame} template={activeTemplate} onBack={() => setStage('session-detail')} onChange={updateActiveFrame} onCaptureSlot={slotIndex => void captureSlot(slotIndex)} />
   else if (stage === 'session-detail' && activeSession) content = <SessionFrames language={settings.language} session={activeSession} templates={[...templates, ...settings.customFrames]} onBack={() => setStage('session-list')} onNew={beginNewFrame} onOpen={openFrame} onDelete={removeFrame} />
   else content = <SessionHome language={settings.language} welcomeHeading={settings.welcomeHeading} sessionCount={sessions.length} onCreate={createSession} onView={() => setStage('session-list')} />

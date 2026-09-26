@@ -25,7 +25,7 @@ export function SessionFrames({ language, session, templates, onBack, onNew, onO
       {session.frames.map((frame, index) => {
         const template = templates.find(item => item.id === frame.templateId) ?? templates[0]
         if (!template) return null
-        const photos = frame.assignments.map(id => frame.photos.find(photo => photo.id === id)?.dataUrl ?? null)
+        const photos = frame.assignments.map(id => { const photo = frame.photos.find(item => item.id === id); return photo?.previewDataUrl ?? photo?.dataUrl ?? null })
         const complete = photos.filter(Boolean).length === template.requiredSlots
         return <article className="captured-frame-card" key={frame.id}><button className="captured-frame-open" onClick={() => onOpen(frame)}><div className="captured-frame-preview"><FrameArtwork language={language} photos={photos} template={template} /></div><div className="captured-frame-copy"><span>{String(index + 1).padStart(2, '0')} · {complete ? tr(language, 'Hoàn tất', 'Complete') : tr(language, 'Bản nháp', 'Draft')}</span><h2>{template.name}</h2><p>{tr(language, `${photos.filter(Boolean).length}/${template.requiredSlots} ô · ${frame.photos.length} ảnh`, `${photos.filter(Boolean).length}/${template.requiredSlots} slots · ${frame.photos.length} captures`)}</p></div></button><button className="frame-card-delete" onClick={() => onDelete(frame)}>{tr(language, 'Xóa', 'Delete')}</button></article>
       })}

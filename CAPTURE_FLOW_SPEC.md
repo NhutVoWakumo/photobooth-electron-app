@@ -66,7 +66,7 @@ requiredSlots: N
 extraCaptureAllowance: 2       // operator setting, có thể đổi
 minimumCaptures: N
 maximumCaptures: N + extraCaptureAllowance
-countdownSeconds: 3
+countdownSeconds: 10
 postCaptureReviewMs: 2000
 ```
 
@@ -180,7 +180,7 @@ Settings dành cho người vận hành, không hiện cho khách:
 | Extra capture allowance | 2 | Max captures = slot count + số này. |
 | Retake policy | Limited | Limited ẩn Retake khi quota còn lại phải dành cho slot trống; Unlimited luôn cho Retake. |
 | Before countdown | 1 giây | Khoảng dừng sau khi vào live preview, trước mỗi countdown; có thể chọn chụp ngay. |
-| Countdown | 3 giây | Trước mỗi shutter. |
+| Countdown | 10 giây | Trước mỗi shutter. |
 | Minimum post-capture review | 2 giây | Guided mode chỉ mở nút quyết định sau thời gian này. |
 | Original photo JPEG quality | 92% | Chất lượng của mỗi ảnh gốc lưu trong session. |
 | Final print JPEG quality | 94% | Chất lượng file layout cuối cùng để lưu/in. |

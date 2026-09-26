@@ -17,7 +17,7 @@ export function KioskMotion({ level, scope, stage }: KioskMotionProps): JSX.Elem
   useGSAP(() => {
     const changedStage = previousStage.current !== stage
     previousStage.current = stage
-    if (level === 'low') return
+    if (level === 'low' || stage === 'slot-capture') return
 
     const media = gsap.matchMedia()
     media.add({ reduced: '(prefers-reduced-motion: reduce)' }, context => {

@@ -241,8 +241,8 @@ export async function renderPrintSheet(strip: string, template: TemplateManifest
     return {
       dataUrl: strip,
       layoutId: 'single-4x6',
-      width: printWidth,
-      height: printHeight,
+      width: template.output.width,
+      height: template.output.height,
       copiesPerSheet: 1
     }
   }

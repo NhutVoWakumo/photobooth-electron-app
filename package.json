@@ -1,6 +1,6 @@
 {
   "name": "luma-booth",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "LUMA offline-first desktop photo booth",
   "main": "./out/main/index.js",
   "scripts": {
@@ -10,6 +10,8 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win",
     "typecheck": "tsc --noEmit",
+    "qc:print": "electron scripts/print-qc.cjs",
+    "qc:capture": "electron scripts/capture-qc.cjs",
     "preview": "electron-vite preview"
   },
   "author": "LUMA Booth",

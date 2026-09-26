@@ -126,6 +126,20 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
   cameraDevices: CameraDevice[]; cameraStatus: CameraStatus; draft: BoothSettings; selectedCameraId: string
   onRefreshCameras: () => void; onSelectCamera: (cameraId: string) => void; update: UpdateSetting
 }): JSX.Element {
+  const [printers, setPrinters] = useState<Array<{ name: string; displayName: string; description: string }>>([])
+  const [printerError, setPrinterError] = useState('')
+  const [loadingPrinters, setLoadingPrinters] = useState(false)
+  const refreshPrinters = async () => {
+    setLoadingPrinters(true)
+    setPrinterError('')
+    try {
+      if (!window.booth) throw new Error(tr(draft.language, 'Chỉ có trong ứng dụng desktop.', 'Available in the desktop app only.'))
+      setPrinters(await window.booth.listPrinters())
+    } catch (error) {
+      setPrinterError(error instanceof Error ? error.message : String(error))
+    } finally { setLoadingPrinters(false) }
+  }
+  useEffect(() => { void refreshPrinters() }, [])
   return <div className="settings-section">
     <SettingsPageHeader title={tr(draft.language, 'Sự kiện & thiết bị', 'Event & devices')} description={tr(draft.language, 'Thông tin hiển thị và phần cứng dùng trong booth.', 'Identity and hardware used by this booth.')} />
     <SettingsGroup title={tr(draft.language, 'Thiết bị', 'Hardware')}>
@@ -134,7 +148,9 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
           {cameraDevices.length === 0 ? <option value="">{t(draft.language, 'noCamera')}</option> : cameraDevices.map(camera => <option key={camera.id} value={camera.id}>{camera.label}</option>)}
         </select><small className="field-help">{cameraStatus === 'denied' ? t(draft.language, 'cameraPermissionBlocked') : t(draft.language, 'cameraPermissionHelp')}</small></div>
       <label className="settings-check"><input type="checkbox" checked={draft.mirrorCamera} onChange={event => update('mirrorCamera', event.target.checked)} /><span>{tr(draft.language, 'Lật gương camera và ảnh chụp', 'Mirror camera and captured photos')}<small>{tr(draft.language, 'Bật cho webcam kiểu selfie. Tắt khi dùng máy ảnh rời nếu muốn ảnh đúng chiều thực tế.', 'Keep this on for a selfie-style webcam. Turn it off for an external camera when you want the real-world orientation.')}</small></span></label>
-      <label>{t(draft.language, 'printer')}<select value={['No printer selected', 'Chưa chọn máy in'].includes(draft.printerName) ? 'none' : draft.printerName} onChange={event => update('printerName', event.target.value)}><option value="none">{t(draft.language, 'noPrinter')}</option><option value="office-mock">{t(draft.language, 'officePrinter')}</option><option value="dnp-mock">{t(draft.language, 'dnpPrinter')}</option></select><small>{t(draft.language, 'printerPhaseHelp')}</small></label>
+      <div className="settings-field"><div className="field-heading"><span>{t(draft.language, 'printer')}</span><button className="text-button" type="button" onClick={() => void refreshPrinters()} disabled={loadingPrinters}>{loadingPrinters ? tr(draft.language, 'Đang tìm…', 'Searching…') : t(draft.language, 'refresh')}</button></div>
+        <select aria-label={t(draft.language, 'printer')} value={draft.printerName} onChange={event => update('printerName', event.target.value)}><option value="none">{t(draft.language, 'noPrinter')}</option>{draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) && <option value={draft.printerName}>{draft.printerName} — {tr(draft.language, 'không kết nối', 'unavailable')}</option>}{printers.map(printer => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}</option>)}</select>
+        <small className="field-help">{printerError || (draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) ? tr(draft.language, 'Máy in đã chọn không còn kết nối. Hãy chọn lại.', 'The selected printer is unavailable. Choose another.') : tr(draft.language, 'Chọn máy in thật, lưu cài đặt, rồi bấm In ngay để in không cần hộp thoại.', 'Choose a connected printer and save. Print now will send directly without a dialog.'))}</small></div>
     </SettingsGroup>
   </div>
 }

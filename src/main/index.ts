@@ -2,6 +2,8 @@ import { app, BrowserWindow, ClipboardItem, clipboard, ipcMain, session } from '
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { buildPrintPage, printPageSizeMicrons } from './printPage'
 
 interface SaveSessionInput {
   eventName: string
@@ -94,7 +96,9 @@ async function listWorkspaces(): Promise<StoredWorkspace[]> {
   return workspaces.filter((workspace): workspace is StoredWorkspace => Boolean(workspace?.id)).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
 }
 
-async function saveWorkspace(workspace: StoredWorkspace): Promise<void> {
+const workspaceWrites = new Map<string, Promise<void>>()
+
+async function writeWorkspace(workspace: StoredWorkspace): Promise<void> {
   if (!workspace || typeof workspace.id !== 'string') throw new Error('Invalid session.')
   await mkdir(workspaceDirectory(), { recursive: true })
   const target = workspacePath(workspace.id)
@@ -103,7 +107,17 @@ async function saveWorkspace(workspace: StoredWorkspace): Promise<void> {
   await rename(temporary, target)
 }
 
+function saveWorkspace(workspace: StoredWorkspace): Promise<void> {
+  if (!workspace || typeof workspace.id !== 'string') return Promise.reject(new Error('Invalid session.'))
+  const previous = workspaceWrites.get(workspace.id) ?? Promise.resolve()
+  const pending = previous.catch(() => undefined).then(() => writeWorkspace(workspace))
+  workspaceWrites.set(workspace.id, pending)
+  void pending.finally(() => { if (workspaceWrites.get(workspace.id) === pending) workspaceWrites.delete(workspace.id) }).catch(() => undefined)
+  return pending
+}
+
 async function deleteWorkspace(id: string): Promise<void> {
+  await workspaceWrites.get(id)?.catch(() => undefined)
   await rm(workspacePath(id), { force: true })
 }
 
@@ -162,6 +176,69 @@ async function exportImage(input: { eventName: string; dataUrl: string }): Promi
   return { outputPath }
 }
 
+interface PrintImageInput {
+  printerName: string
+  dataUrl: string
+  width: number
+  height: number
+  ppi: number
+}
+
+let printInProgress = false
+
+async function listPrinters(): Promise<Array<{ name: string; displayName: string; description: string }>> {
+  const window = BrowserWindow.getAllWindows().find(item => !item.isDestroyed())
+  if (!window) return []
+  const printers = await window.webContents.getPrintersAsync()
+  return printers.map(({ name, displayName, description }) => ({ name, displayName, description }))
+}
+
+async function printImage(input: PrintImageInput): Promise<void> {
+  if (printInProgress) throw new Error('A print job is already in progress.')
+  if (!input || typeof input.printerName !== 'string' || !input.printerName || input.printerName === 'none') throw new Error('Select a printer in Settings first.')
+  if (typeof input.dataUrl !== 'string' || !/^data:image\/jpeg;base64,/.test(input.dataUrl)) throw new Error('Invalid print image.')
+  if (![input.width, input.height, input.ppi].every(Number.isFinite) || input.width < 300 || input.height < 300 || input.ppi < 72) throw new Error('Invalid print dimensions.')
+  const widthInches = input.width / input.ppi
+  const heightInches = input.height / input.ppi
+  if (widthInches < 1 || heightInches < 1 || widthInches > 12 || heightInches > 12) throw new Error('Unsupported paper size.')
+  const printers = await listPrinters()
+  if (!printers.some(printer => printer.name === input.printerName)) throw new Error('The selected printer is no longer available. Reconnect it or choose another printer in Settings.')
+
+  printInProgress = true
+  const directory = join(app.getPath('temp'), `luma-print-${randomUUID()}`)
+  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } })
+  try {
+    await mkdir(directory, { recursive: true })
+    const photo = toBuffer(input.dataUrl)
+    if (photo.length > 50 * 1024 * 1024) throw new Error('Print image is too large.')
+    await writeFile(join(directory, 'photo.jpg'), photo)
+    const pagePath = join(directory, 'print.html')
+    await writeFile(pagePath, buildPrintPage(widthInches, heightInches), 'utf8')
+    await window.loadURL(pathToFileURL(pagePath).toString())
+    await window.webContents.executeJavaScript('document.images[0].decode()')
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('The printer did not respond in time. Check its queue before retrying.')), 30000)
+      window.webContents.print({
+        silent: true,
+        deviceName: input.printerName,
+        printBackground: true,
+        margins: { marginType: 'none' },
+        pageSize: printPageSizeMicrons(widthInches, heightInches),
+        landscape: widthInches > heightInches,
+        copies: 1
+      }, (success, reason) => {
+        clearTimeout(timeout)
+        if (success) resolve()
+        else reject(new Error(reason || 'The print job was rejected by the printer.'))
+      })
+    })
+  } finally {
+    if (!window.isDestroyed()) window.destroy()
+    await rm(directory, { recursive: true, force: true }).catch(() => undefined)
+    printInProgress = false
+  }
+}
+
 app.setName('LUMA Booth')
 
 app.whenReady().then(() => {
@@ -175,6 +252,8 @@ app.whenReady().then(() => {
   ipcMain.handle('storage:load-settings', () => loadSettings())
   ipcMain.handle('storage:save-settings', (_event, value: unknown) => saveSettings(value))
   ipcMain.handle('output:export-image', (_event, input: { eventName: string; dataUrl: string }) => exportImage(input))
+  ipcMain.handle('printer:list', () => listPrinters())
+  ipcMain.handle('printer:print-image', (_event, input: PrintImageInput) => printImage(input))
   createWindow()
 
   app.on('activate', () => {
