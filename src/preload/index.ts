@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('booth', {
   saveSettings: (value: unknown) => ipcRenderer.invoke('storage:save-settings', value),
   exportImage: (input: { eventName: string; dataUrl: string }) => ipcRenderer.invoke('output:export-image', input),
   listPrinters: () => ipcRenderer.invoke('printer:list'),
-  printImage: (input: { printerName: string; dataUrl: string; width: number; height: number; ppi: number }) => ipcRenderer.invoke('printer:print-image', input),
+  printImage: (input: { printerName: string; dataUrl: string; width: number; height: number; ppi: number; profile: import('../shared/printProfile').PrinterProfile }) => ipcRenderer.invoke('printer:print-image', input),
   driveConnect: () => ipcRenderer.invoke('drive:connect'),
   driveImportOAuthFile: () => ipcRenderer.invoke('drive:import-oauth-file'),
   driveStatus: () => ipcRenderer.invoke('drive:status'),

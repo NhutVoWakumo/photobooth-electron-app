@@ -4,17 +4,19 @@ Drive sharing is optional. Sessions and original captures remain on this compute
 
 ## For booth operators
 
-Open **Settings → General → Google Drive**. On a fresh installation, choose **Choose Google setup file** and select your own Desktop OAuth JSON downloaded from Google Cloud. The app reads that file locally, saves the configuration on this computer, then opens the browser for you to approve your Google account. If the setup is already saved, use **Connect Google Drive** to sign in again. You do not need to type the client ID or secret into the app. Photos stay local until QR is enabled for a session with completed frames.
+Open **Settings → General → Google Drive** and choose **Connect Google Drive**. Sign in with your own Google account in the system browser and approve Drive access. No JSON file or credential entry is needed in a configured release build. Photos stay local until QR is enabled for a session with completed frames.
 
-## One-time setup for each operator
+## One-time setup for the app owner
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/) with the Google account you want to use. Create or choose a project.
+1. Open [Google Cloud Console](https://console.cloud.google.com/) and create or choose one LUMA project.
 2. Enable **Google Drive API** for that project.
-3. Set up the OAuth consent screen. For a personal Google account, choose **External**; while in Testing mode, add your Google account as a test user. Google may expire refresh tokens after 7 days in Testing mode, so reconnect when requested.
-4. Create an OAuth client of type **Desktop app** and download its JSON file. Keep the file private on your computer; never commit it or paste its contents into an issue or chat.
-5. In the installed app, select that JSON under **Settings → General → Google Drive** and complete Google sign-in. If the Google app is in Testing mode, your account must be listed as a test user. Google may expire refresh tokens after 7 days in Testing mode, so reconnect when requested.
+3. Set up the OAuth consent screen as **External**. While in Testing mode, add each friend's Google email as a test user. Google may expire refresh tokens after 7 days in Testing mode, so users may need to reconnect.
+4. Create an OAuth client of type **Desktop app**. The **client ID only** goes into the GitHub repository variable `LUMA_GOOGLE_CLIENT_ID` before building a release. Do not add its client secret, the downloaded JSON, or any user's token to Git, GitHub Actions variables/secrets, or an installer.
+5. The release workflow checks that the variable exists and injects only that public ID into the desktop app. Each user then signs in to their own Drive in Settings.
 
-Release builds contain no Google OAuth client ID, client secret, access token, refresh token, or preconnected account. GitHub Actions needs no Google secrets. Every installation begins without Drive configuration and stores its own setup and tokens in that machine's Electron user-data directory. Keep the downloaded OAuth JSON and machine user data private; do not copy them into the source repository or release assets.
+Google's [installed-app OAuth guidance](https://developers.google.com/identity/protocols/oauth2/native-app) states that desktop apps cannot keep secrets; the client secret is optional for token exchange and refresh. The public client ID in an installer is extractable, even if encrypted or obfuscated. Every installation begins with no account or token. PKCE protects each authorization-code exchange, and each user's tokens stay in that machine's Electron user-data directory. No backend service is needed for this native-app flow.
+
+For development or a private custom OAuth project, **Advanced setup** still accepts a Desktop OAuth JSON stored locally. That file and any locally saved client secret are never packaged or uploaded by the release workflow.
 
 On first connection, the app looks for an app-visible `LUMA Booth` folder at the top level of My Drive and creates it if missing. All session folders are created inside this one root; frame folders are created inside their session. The app stores the root folder ID and reuses it on later runs. The `drive.file` scope cannot search arbitrary folders that the app has never created or been granted, so a same-named folder manually created outside the app may not be discoverable.
 

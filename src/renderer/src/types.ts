@@ -1,6 +1,7 @@
 export type BoothStage = 'idle' | 'session-list' | 'session-detail' | 'frame-editor' | 'template-picker' | 'frame-preview' | 'capture' | 'countdown' | 'photo-review' | 'selection' | 'review' | 'slot-capture'
 import type { Language } from './i18n'
 import type { TemplateManifest } from './templates'
+import type { PrinterProfile } from '../../shared/printProfile'
 
 export interface BoothSettings {
   language: Language
@@ -10,6 +11,7 @@ export interface BoothSettings {
   cameraName: string
   mirrorCamera: boolean
   printerName: string
+  printerProfiles: Record<string, PrinterProfile>
   captureMode: 'guided' | 'batch'
   extraCaptureAllowance: number
   retakePolicy: 'limited' | 'unlimited'
@@ -70,6 +72,7 @@ export const defaultSettings: BoothSettings = {
   cameraName: 'No camera selected',
   mirrorCamera: true,
   printerName: 'none',
+  printerProfiles: {},
   captureMode: 'guided',
   extraCaptureAllowance: 2,
   retakePolicy: 'limited',

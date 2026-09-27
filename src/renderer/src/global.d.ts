@@ -23,7 +23,7 @@ interface Window {
     saveSettings: (settings: unknown) => Promise<void>
     exportImage: (input: { eventName: string; dataUrl: string }) => Promise<{ outputPath: string }>
     listPrinters: () => Promise<Array<{ name: string; displayName: string; description: string }>>
-    printImage: (input: { printerName: string; dataUrl: string; width: number; height: number; ppi: number }) => Promise<void>
+    printImage: (input: { printerName: string; dataUrl: string; width: number; height: number; ppi: number; profile: import('../../shared/printProfile').PrinterProfile }) => Promise<void>
     driveConnect: () => Promise<void>
     driveImportOAuthFile: () => Promise<boolean>
     driveStatus: () => Promise<{ configured: boolean; connected: boolean; pending: number; message: string }>

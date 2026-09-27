@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promise
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildPrintPage, printPageSizeMicrons } from './printPage'
+import { isPrinterProfile, paperDimensions, type PrinterProfile } from '../shared/printProfile'
 import { cleanupExpired, configureDrive, connectDrive, driveStatus, frameLink, openDriveFolder, prepareFrameShare, processQueue, queueDriveDeletion, queueFrame, sessionFolder, sessionLink, setSessionSharing, type UploadJob } from './drive'
 
 interface SaveSessionInput {
@@ -183,6 +184,7 @@ interface PrintImageInput {
   width: number
   height: number
   ppi: number
+  profile: PrinterProfile
 }
 
 let printInProgress = false
@@ -199,9 +201,8 @@ async function printImage(input: PrintImageInput): Promise<void> {
   if (!input || typeof input.printerName !== 'string' || !input.printerName || input.printerName === 'none') throw new Error('Select a printer in Settings first.')
   if (typeof input.dataUrl !== 'string' || !/^data:image\/jpeg;base64,/.test(input.dataUrl)) throw new Error('Invalid print image.')
   if (![input.width, input.height, input.ppi].every(Number.isFinite) || input.width < 300 || input.height < 300 || input.ppi < 72) throw new Error('Invalid print dimensions.')
-  const widthInches = input.width / input.ppi
-  const heightInches = input.height / input.ppi
-  if (widthInches < 1 || heightInches < 1 || widthInches > 12 || heightInches > 12) throw new Error('Unsupported paper size.')
+  if (!isPrinterProfile(input.profile)) throw new Error('Choose a paper size for this printer in Settings.')
+  const paper = paperDimensions(input.profile, input.width > input.height)
   const printers = await listPrinters()
   if (!printers.some(printer => printer.name === input.printerName)) throw new Error('The selected printer is no longer available. Reconnect it or choose another printer in Settings.')
 
@@ -214,7 +215,7 @@ async function printImage(input: PrintImageInput): Promise<void> {
     if (photo.length > 50 * 1024 * 1024) throw new Error('Print image is too large.')
     await writeFile(join(directory, 'photo.jpg'), photo)
     const pagePath = join(directory, 'print.html')
-    await writeFile(pagePath, buildPrintPage(widthInches, heightInches), 'utf8')
+    await writeFile(pagePath, buildPrintPage(paper.widthMm, paper.heightMm, input.profile.marginMm, input.profile.fit), 'utf8')
     await window.loadURL(pathToFileURL(pagePath).toString())
     await window.webContents.executeJavaScript('document.images[0].decode()')
     await new Promise<void>((resolve, reject) => {
@@ -224,8 +225,8 @@ async function printImage(input: PrintImageInput): Promise<void> {
         deviceName: input.printerName,
         printBackground: true,
         margins: { marginType: 'none' },
-        pageSize: printPageSizeMicrons(widthInches, heightInches),
-        landscape: widthInches > heightInches,
+        pageSize: printPageSizeMicrons(paper.widthMm, paper.heightMm),
+        landscape: false,
         copies: 1
       }, (success, reason) => {
         clearTimeout(timeout)

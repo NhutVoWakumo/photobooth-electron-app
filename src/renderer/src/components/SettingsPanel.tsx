@@ -7,6 +7,7 @@ import { FrameArtwork } from './FrameArtwork'
 import { getPhysicalPrintSize, parseFrameImport, templates, type TemplateManifest } from '../templates'
 import { importFramePack, makeDemoFramePack } from '../lib/framePack'
 import { referenceFrames } from '../referenceFrames'
+import { paperSizes, type PaperSize, type PrinterProfile } from '../../../shared/printProfile'
 
 interface SettingsPanelProps {
   cameraDevices: CameraDevice[]
@@ -132,6 +133,11 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
   const [driveStatus, setDriveStatus] = useState<{ configured: boolean; connected: boolean; pending: number; message: string } | null>(null)
   const [driveBusy, setDriveBusy] = useState(false)
   const [driveError, setDriveError] = useState('')
+  const printerProfile = draft.printerProfiles?.[draft.printerName]
+  const updatePrinterProfile = (profile: PrinterProfile) => {
+    if (draft.printerName === 'none') return
+    update('printerProfiles', { ...draft.printerProfiles, [draft.printerName]: profile })
+  }
   useEffect(() => { void window.booth?.driveStatus().then(setDriveStatus).catch(() => undefined) }, [])
   const connectDrive = async () => {
     if (!window.booth) return
@@ -175,17 +181,30 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
       <label className="settings-check"><input type="checkbox" checked={draft.mirrorCamera} onChange={event => update('mirrorCamera', event.target.checked)} /><span>{tr(draft.language, 'Lật gương camera và ảnh chụp', 'Mirror camera and captured photos')}<small>{tr(draft.language, 'Bật cho webcam kiểu selfie. Tắt khi dùng máy ảnh rời nếu muốn ảnh đúng chiều thực tế.', 'Keep this on for a selfie-style webcam. Turn it off for an external camera when you want the real-world orientation.')}</small></span></label>
       <div className="settings-field"><div className="field-heading"><span>{t(draft.language, 'printer')}</span><button className="text-button" type="button" onClick={() => void refreshPrinters()} disabled={loadingPrinters}>{loadingPrinters ? tr(draft.language, 'Đang tìm…', 'Searching…') : t(draft.language, 'refresh')}</button></div>
         <select aria-label={t(draft.language, 'printer')} value={draft.printerName} onChange={event => update('printerName', event.target.value)}><option value="none">{t(draft.language, 'noPrinter')}</option>{draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) && <option value={draft.printerName}>{draft.printerName} — {tr(draft.language, 'không kết nối', 'unavailable')}</option>}{printers.map(printer => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}</option>)}</select>
-        <small className="field-help">{printerError || (draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) ? tr(draft.language, 'Máy in đã chọn không còn kết nối. Hãy chọn lại.', 'The selected printer is unavailable. Choose another.') : tr(draft.language, 'Chọn máy in thật, lưu cài đặt, rồi bấm In ngay để in không cần hộp thoại.', 'Choose a connected printer and save. Print now will send directly without a dialog.'))}</small></div>
+        <small className="field-help">{printerError || (draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) ? tr(draft.language, 'Máy in đã chọn không còn kết nối. Hãy chọn lại.', 'The selected printer is unavailable. Choose another.') : tr(draft.language, 'Chọn đúng khổ giấy đang đặt trong driver. Mỗi máy in nhớ cấu hình riêng.', 'Match the paper loaded in the printer driver. Each printer keeps its own setup.'))}</small></div>
+      <>{draft.printerName !== 'none' && <div className="settings-field print-profile-field">
+        <label htmlFor="printer-paper">{tr(draft.language, 'Khổ giấy của máy in', 'Printer paper size')}</label>
+        <select id="printer-paper" value={printerProfile?.paper ?? ''} onChange={event => updatePrinterProfile({ paper: event.target.value as PaperSize, marginMm: 3, fit: 'contain' })}>
+          <option value="">{tr(draft.language, 'Chọn khổ giấy trước khi in', 'Choose paper before printing')}</option>
+          {Object.entries(paperSizes).map(([value, paper]) => <option key={value} value={value}>{paper.label}</option>)}
+        </select>
+        <small className="field-help">{tr(draft.language, 'Canon giấy văn phòng: chọn A5/A4 giống driver. DNP: chọn đúng cỡ media đang lắp; 4×6 là điểm bắt đầu cho RX1HS/QW410.', 'Office printer: match A5/A4 in its driver. DNP: match the loaded media; 4×6 is a starting point for RX1HS/QW410.')}</small>
+        {printerProfile && <>
+          <SegmentedSetting label={tr(draft.language, 'Căn ảnh trên giấy', 'Fit on paper')} value={printerProfile.fit} options={[{ value: 'contain', label: tr(draft.language, 'Vừa toàn bộ · có viền', 'Fit all · may have borders') }, { value: 'cover', label: tr(draft.language, 'Phủ kín · có thể cắt', 'Fill · may crop') }]} onChange={value => updatePrinterProfile({ ...printerProfile, fit: value as PrinterProfile['fit'] })} />
+          <TouchRange label={tr(draft.language, 'Lề an toàn', 'Safe margin')} value={printerProfile.marginMm} min={0} max={12} step={1} valueLabel={`${printerProfile.marginMm} mm`} onChange={value => updatePrinterProfile({ ...printerProfile, marginMm: value })} />
+          <small className="field-help">{tr(draft.language, 'Để 3 mm khi thử máy mới. Chỉ giảm về 0 sau khi in thử và xác nhận driver hỗ trợ in sát mép.', 'Start at 3 mm for a new printer. Use 0 only after a test confirms borderless printing.')}</small>
+        </>}
+      </div>}</>
     </SettingsGroup>
     <SettingsGroup title={tr(draft.language, 'Chia sẻ ảnh', 'Photo sharing')}>
       <div className="settings-field drive-setup-field"><div className="field-heading"><span>Google Drive</span></div>
         <p className="field-help">{driveStatus?.connected ? tr(draft.language, 'Đã kết nối trên máy này. QR mặc định bật cho các phiên.', 'Connected on this computer. QR is on by default for sessions.') : tr(draft.language, 'Chưa kết nối. QR tắt; ảnh vẫn lưu trên máy.', 'Not connected. QR is off; photos stay on this computer.')}</p>
         <div className="drive-setup-actions">
-          {!driveStatus?.connected && driveStatus?.configured && <button className="secondary-button" type="button" disabled={driveBusy} onClick={() => void connectDrive()}>{driveBusy ? tr(draft.language, 'Đang kết nối…', 'Connecting…') : tr(draft.language, 'Kết nối Google Drive', 'Connect Google Drive')}</button>}
-          <button className="secondary-button" type="button" disabled={driveBusy} onClick={() => void importDriveSetup()}>{driveStatus?.configured ? tr(draft.language, 'Đổi file thiết lập', 'Change setup file') : tr(draft.language, 'Chọn file thiết lập Google', 'Choose Google setup file')}</button>
+          <button className="secondary-button" type="button" disabled={driveBusy || driveStatus === null || !driveStatus.configured} onClick={() => void connectDrive()}>{driveBusy ? tr(draft.language, 'Đang kết nối…', 'Connecting…') : driveStatus?.connected ? tr(draft.language, 'Kết nối lại Google Drive', 'Reconnect Google Drive') : tr(draft.language, 'Kết nối Google Drive', 'Connect Google Drive')}</button>
         </div>
-        {!driveStatus?.configured && <small className="field-help">{tr(draft.language, 'Dùng file JSON loại Desktop app tải từ Google Cloud của bạn. App không có sẵn tài khoản hay token nào.', 'Use your own Desktop app JSON from Google Cloud. This app ships with no account or token.')}</small>}
-        {driveStatus?.configured && <small className="field-help">{tr(draft.language, 'Cấu hình được giữ riêng trên máy này, không nằm trong file cài.', 'Setup stays on this computer, not in the installer.')}</small>}
+        {!driveStatus?.configured && <small className="field-help">{tr(draft.language, 'Bản app này chưa được cấu hình Google Drive. Hãy báo người phát hành.', 'Google Drive is not configured in this build. Ask the app owner.')}</small>}
+        {driveStatus?.configured && <small className="field-help">{tr(draft.language, 'Đăng nhập bằng Google của bạn; ảnh sẽ lưu vào Drive của bạn. Không cần file thiết lập.', 'Sign in with your own Google account. Photos go to your Drive; no setup file needed.')}</small>}
+        <details className="drive-advanced"><summary>{tr(draft.language, 'Thiết lập nâng cao', 'Advanced setup')}</summary><button className="secondary-button" type="button" disabled={driveBusy} onClick={() => void importDriveSetup()}>{tr(draft.language, 'Nhập file OAuth Desktop riêng', 'Import a different Desktop OAuth file')}</button></details>
         {driveError && <small className="field-help" role="alert">{driveError}</small>}
       </div>
     </SettingsGroup>

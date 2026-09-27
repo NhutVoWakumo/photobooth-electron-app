@@ -10,6 +10,8 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.file'
 const RETENTION_DAYS = 30
 const ROOT_FOLDER_NAME = 'LUMA Booth'
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
+declare const __LUMA_GOOGLE_CLIENT_ID__: string
+const BUNDLED_CLIENT_ID = typeof __LUMA_GOOGLE_CLIENT_ID__ === 'string' ? __LUMA_GOOGLE_CLIENT_ID__ : ''
 
 interface Token { access_token: string; refresh_token: string; expires_at: number }
 interface CloudFrame { folderId: string; permissionId: string; url: string; expiresAt: string; files: Record<string, string> }
@@ -63,11 +65,15 @@ async function refresh(): Promise<void> {
   if (token.expires_at > Date.now() + 60_000) return
   const state = await loadState()
   const secret = await loadClientSecret()
-  if (!secret) throw new Error('Desktop OAuth client secret is missing. Set up Google Drive again.')
-  const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: new URLSearchParams({ client_id: state.clientId, client_secret: secret, grant_type: 'refresh_token', refresh_token: token.refresh_token }) })
+  const clientId = state.clientId || BUNDLED_CLIENT_ID
+  if (!clientId) throw new Error('Google Drive sign-in is not configured in this build.')
+  const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: tokenRequestParams({ client_id: clientId, grant_type: 'refresh_token', refresh_token: token.refresh_token }, secret) })
   if (!response.ok) { token = null; await rm(tokenPath(), { force: true }); throw new Error(`Drive sign-in expired (${response.status}). Connect again.`) }
   const next = await response.json() as { access_token: string; expires_in: number }
   await saveToken({ ...token, access_token: next.access_token, expires_at: Date.now() + next.expires_in * 1000 })
+}
+export function tokenRequestParams(fields: Record<string, string>, secret: string | null): URLSearchParams {
+  return new URLSearchParams({ ...fields, ...(secret ? { client_secret: secret } : {}) })
 }
 async function request(url: string, init: RequestInit = {}): Promise<Response> {
   await refresh()
@@ -127,9 +133,10 @@ export async function configureDrive(clientId: string, secret: string): Promise<
 }
 export async function connectDrive(): Promise<void> {
   const state = await loadState()
-  if (!state.clientId) throw new Error('Enter an OAuth Desktop client ID first.')
+  const clientId = state.clientId || BUNDLED_CLIENT_ID
+  if (!clientId) throw new Error('Google Drive sign-in is not configured in this build. Ask the app owner to set it up.')
   const secret = await loadClientSecret()
-  if (!secret) throw new Error('Enter an OAuth Desktop client secret first.')
+  if (!state.clientId) { state.clientId = clientId; await saveState(state) }
   const verifier = randomBytes(32).toString('base64url')
   const challenge = createHash('sha256').update(verifier).digest('base64url')
   const nonce = randomBytes(24).toString('hex')
@@ -139,7 +146,7 @@ export async function connectDrive(): Promise<void> {
   if (!address || typeof address === 'string') throw new Error('Could not start OAuth callback.')
   const redirect = `http://127.0.0.1:${address.port}/callback`
   const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-  for (const [key, value] of Object.entries({ client_id: state.clientId, redirect_uri: redirect, response_type: 'code', scope: SCOPE, access_type: 'offline', prompt: 'consent', code_challenge: challenge, code_challenge_method: 'S256', state: nonce })) auth.searchParams.set(key, value)
+  for (const [key, value] of Object.entries({ client_id: clientId, redirect_uri: redirect, response_type: 'code', scope: SCOPE, access_type: 'offline', prompt: 'consent', code_challenge: challenge, code_challenge_method: 'S256', state: nonce })) auth.searchParams.set(key, value)
   try {
     const code = new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Google sign-in timed out.')), 180_000)
@@ -154,7 +161,7 @@ export async function connectDrive(): Promise<void> {
       })
     })
     await shell.openExternal(auth.toString())
-    const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: new URLSearchParams({ client_id: state.clientId, client_secret: secret, code: await code, code_verifier: verifier, redirect_uri: redirect, grant_type: 'authorization_code' }) })
+    const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: tokenRequestParams({ client_id: clientId, code: await code, code_verifier: verifier, redirect_uri: redirect, grant_type: 'authorization_code' }, secret) })
     if (!response.ok) {
       const failure = await response.json().catch(() => ({})) as { error?: string; error_description?: string }
       throw new Error(`Google sign-in failed (${response.status}): ${failure.error ?? 'unknown_error'}${failure.error_description ? ` — ${failure.error_description}` : ''}`)
@@ -167,7 +174,7 @@ export async function connectDrive(): Promise<void> {
 }
 export async function driveStatus(): Promise<{ configured: boolean; connected: boolean; pending: number; message: string }> {
   const state = await loadState(); await loadToken()
-  return { configured: Boolean(state.clientId && await loadClientSecret()), connected: Boolean(token), pending: state.queue.length + state.deletions.length, message: statusMessage }
+  return { configured: Boolean(state.clientId || BUNDLED_CLIENT_ID), connected: Boolean(token), pending: state.queue.length + state.deletions.length, message: statusMessage }
 }
 export async function queueFrame(job: UploadJob): Promise<void> {
   validateJob(job)

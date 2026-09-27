@@ -9,7 +9,10 @@ app.on('window-all-closed', () => {})
 async function main() {
   const directory = await mkdtemp(join(tmpdir(), 'luma-drive-qc-'))
   app.setPath('userData', directory)
+  global.__LUMA_GOOGLE_CLIENT_ID__ = '123456-abc.apps.googleusercontent.com'
   const drive = await import('../src/main/drive.ts')
+  assert.equal((await drive.driveStatus()).configured, true, 'A fresh build with public client ID needs no setup file')
+  assert.equal(drive.tokenRequestParams({ client_id: 'synthetic', grant_type: 'refresh_token' }, null).has('client_secret'), false, 'Native-app token requests must work without a bundled secret')
   const jpeg = `data:image/jpeg;base64,${Buffer.from('synthetic test image').toString('base64')}`
   await assert.rejects(() => drive.configureDrive('not-a-google-client-id', 'synthetic-secret'))
   await drive.configureDrive('123456-abc.apps.googleusercontent.com', 'synthetic-secret')

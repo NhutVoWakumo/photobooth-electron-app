@@ -97,13 +97,15 @@ export function OutputEditor({ language, settings, sessionId, sessionName, qrEna
   const printImage = async () => {
     if (!window.booth) { setPrintError(tr(language, 'Chỉ in được trong ứng dụng desktop.', 'Printing requires the desktop app.')); setStatus('print-error'); return }
     if (!settings.printerName || settings.printerName === 'none') { setPrintError(tr(language, 'Hãy chọn máy in trong Settings trước.', 'Select a printer in Settings first.')); setStatus('print-error'); return }
+    const profile = settings.printerProfiles?.[settings.printerName]
+    if (!profile) { setPrintError(tr(language, 'Hãy chọn khổ giấy cho máy in trong Settings trước.', 'Choose the printer paper size in Settings first.')); setStatus('print-error'); return }
     setStatus('printing')
     setPrintError('')
     try {
       const url = qrEnabled && (await window.booth.driveStatus()).connected ? await syncQr() : null
       const output = await renderTemplate({ eventName: settings.eventName, photos: assignments.filter((photo): photo is string => Boolean(photo)), template, outputJpegQuality: settings.outputJpegQuality, photoTransforms: transforms, qr: url ? { url, placement: qrPlacement } : undefined })
       const sheet = await renderPrintSheet(output, template, settings.outputJpegQuality)
-      await window.booth.printImage({ printerName: settings.printerName, dataUrl: sheet.dataUrl, width: sheet.width, height: sheet.height, ppi: template.output.ppi })
+      await window.booth.printImage({ printerName: settings.printerName, dataUrl: sheet.dataUrl, width: sheet.width, height: sheet.height, ppi: template.output.ppi, profile })
       setStatus('printed')
     } catch (error) {
       setPrintError(error instanceof Error ? error.message : String(error))

@@ -16,6 +16,7 @@ import { t } from './i18n'
 import { referenceFrames } from './referenceFrames'
 import { appendCapture } from './lib/appendCapture'
 import { defaultFrameQrPlacement } from './lib/frameQr'
+import { isPrinterProfile } from '../../shared/printProfile'
 
 const storageKey = 'luma-booth-settings-v2'
 
@@ -31,7 +32,8 @@ function normalizeSettings(value: unknown): BoothSettings {
     const legacyDefaults = !saved.timingDefaultsVersion
     const countdownSeconds = legacyDefaults && saved.countdownSeconds === 3 ? 10 : (saved.countdownSeconds ?? defaultSettings.countdownSeconds)
     const postCaptureReviewMs = legacyDefaults && saved.postCaptureReviewMs === 3000 ? 2000 : (saved.postCaptureReviewMs ?? defaultSettings.postCaptureReviewMs)
-    return { ...defaultSettings, ...saved, countdownSeconds, postCaptureReviewMs, timingDefaultsVersion: 2, customFrames, enabledFrameIds: enabledFrameIds.length > 0 ? enabledFrameIds : defaultSettings.enabledFrameIds }
+    const printerProfiles = Object.fromEntries(Object.entries(saved.printerProfiles ?? {}).filter(([name, profile]) => name !== 'none' && isPrinterProfile(profile)))
+    return { ...defaultSettings, ...saved, printerProfiles, countdownSeconds, postCaptureReviewMs, timingDefaultsVersion: 2, customFrames, enabledFrameIds: enabledFrameIds.length > 0 ? enabledFrameIds : defaultSettings.enabledFrameIds }
   } catch { return defaultSettings }
 }
 

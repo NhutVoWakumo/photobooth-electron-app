@@ -1,6 +1,6 @@
 {
   "name": "luma-booth",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "LUMA offline-first desktop photo booth",
   "main": "./out/main/index.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "qc:print": "electron scripts/print-qc.cjs",
     "qc:drive": "electron scripts/drive-qc.cjs",
+    "qc:drive-oauth": "electron scripts/drive-oauth-qc.cjs",
     "qc:capture": "electron scripts/capture-qc.cjs",
     "qc:camera": "node --test scripts/camera-access.test.mjs",
     "qc:camera-live": "electron scripts/camera-live-qc.cjs",

@@ -1730,6 +1730,9 @@ button, select, input[type="range"], input[type="checkbox"] { touch-action: mani
 .settings-group .field-heading { margin: 0; }
 .settings-group .field-help { margin: 0; }
 .settings-group .field-pair { gap: var(--space-4); }
+.drive-advanced { margin-top: var(--space-2); }
+.drive-advanced summary { width: fit-content; min-height: 3rem; display: flex; align-items: center; color: var(--color-text-soft); font-weight: 750; cursor: pointer; }
+.drive-advanced[open] .secondary-button { margin-top: var(--space-2); min-height: 3.5rem; }
 
 .frame-settings-section { width: min(100%, 72rem); }
 .frame-settings-section .settings-page-header { margin-bottom: 0; }
