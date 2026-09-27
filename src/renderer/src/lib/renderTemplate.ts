@@ -2,6 +2,8 @@ import type { FrameBackground, FrameLayer, FrameSlot, FrameStickerLayer, Templat
 import { radialShapePoints } from './frameGeometry'
 import { loadFrameFonts } from './frameFonts'
 import type { PhotoTransform } from '../types'
+import QRCode from 'qrcode'
+import { clampFrameQrPlacement, type FrameQrPlacement } from './frameQr'
 
 export interface TemplateRenderOptions {
   eventName: string
@@ -9,6 +11,7 @@ export interface TemplateRenderOptions {
   template: TemplateManifest
   outputJpegQuality: number
   photoTransforms?: PhotoTransform[]
+  qr?: { url: string; placement: FrameQrPlacement }
 }
 
 export interface PrintSheet {
@@ -19,7 +22,7 @@ export interface PrintSheet {
   copiesPerSheet: number
 }
 
-export async function renderTemplate({ eventName, photos, template, outputJpegQuality, photoTransforms = [] }: TemplateRenderOptions): Promise<string> {
+export async function renderTemplate({ eventName, photos, template, outputJpegQuality, photoTransforms = [], qr }: TemplateRenderOptions): Promise<string> {
   await loadFrameFonts(template)
   const canvas = document.createElement('canvas')
   canvas.width = template.output.width
@@ -42,6 +45,7 @@ export async function renderTemplate({ eventName, photos, template, outputJpegQu
   }
 
   const images = await Promise.all(photos.slice(0, template.requiredSlots).map(loadImage))
+  const masks = await Promise.all(template.slots.map(slot => slot.shape === 'custom' && slot.mask ? loadImage(slot.mask) : Promise.resolve(undefined)))
   const renderables = [
     ...template.slots.map((slot, index) => ({ kind: 'slot' as const, zIndex: slot.zIndex ?? 10, slot, image: images[index] })).filter(item => !item.slot.hidden),
     ...(template.layers ?? []).filter(layer => !layer.hidden).map(layer => ({ kind: 'layer' as const, zIndex: layer.zIndex, layer }))
@@ -56,7 +60,8 @@ export async function renderTemplate({ eventName, photos, template, outputJpegQu
     const y = Math.round(item.slot.y * height)
     const slotWidth = Math.round(item.slot.width * width)
     const slotHeight = Math.round(item.slot.height * height)
-    drawSlot(context, item.slot, item.image, x, y, slotWidth, slotHeight, template.theme.slotLight, photoTransforms[template.slots.indexOf(item.slot)])
+    const slotIndex = template.slots.indexOf(item.slot)
+    drawSlot(context, item.slot, item.image, x, y, slotWidth, slotHeight, template.theme.slotLight, photoTransforms[slotIndex], masks[slotIndex])
   }
 
   if ((template.layers?.length ?? 0) === 0) {
@@ -68,14 +73,43 @@ export async function renderTemplate({ eventName, photos, template, outputJpegQu
     context.fillText(new Date().toLocaleDateString(), width / 2, height - height * 0.018)
   }
 
+  if (qr) {
+    const placement = clampFrameQrPlacement(qr.placement, template)
+    const qrImage = await loadImage(await QRCode.toDataURL(qr.url, { width: 768, margin: 0, errorCorrectionLevel: 'M' }))
+    const size = Math.round(placement.size * width)
+    const x = Math.round(placement.x * width)
+    const y = Math.round(placement.y * height)
+    const padding = Math.max(4, Math.round(size * 0.09))
+    context.fillStyle = '#ffffff'
+    context.fillRect(x - padding, y - padding, size + 2 * padding, size + 2 * padding)
+    context.drawImage(qrImage, x, y, size, size)
+  }
+
   return canvas.toDataURL('image/jpeg', outputJpegQuality)
 }
 
-function drawSlot(context: CanvasRenderingContext2D, slot: FrameSlot, image: HTMLImageElement | undefined, x: number, y: number, width: number, height: number, fill: string, transform?: PhotoTransform): void {
+function drawSlot(context: CanvasRenderingContext2D, slot: FrameSlot, image: HTMLImageElement | undefined, x: number, y: number, width: number, height: number, fill: string, transform?: PhotoTransform, mask?: HTMLImageElement): void {
   context.save()
   context.translate(x + width / 2, y + height / 2)
   context.rotate((slot.rotation ?? 0) * Math.PI / 180)
   context.translate(-width / 2, -height / 2)
+  if (mask) {
+    const surface = document.createElement('canvas')
+    surface.width = width
+    surface.height = height
+    const masked = surface.getContext('2d')
+    if (!masked) throw new Error('Could not create the photo mask canvas.')
+    masked.fillStyle = fill
+    masked.fillRect(0, 0, width, height)
+    if (image) (slot.fit ?? 'contain') === 'cover'
+      ? drawCover(masked, image, 0, 0, width, height, transform)
+      : drawContain(masked, image, 0, 0, width, height)
+    masked.globalCompositeOperation = 'destination-in'
+    masked.drawImage(mask, 0, 0, width, height)
+    context.drawImage(surface, 0, 0)
+    context.restore()
+    return
+  }
   slotPath(context, slot, width, height)
   context.clip()
   context.fillStyle = fill

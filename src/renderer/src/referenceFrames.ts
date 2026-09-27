@@ -4,6 +4,8 @@ import socialHeader from './assets/penci-social-header.svg'
 import socialActions from './assets/penci-social-actions.svg'
 import socialPlayer from './assets/penci-social-player.svg'
 import canvaTogetherBookmark from './assets/canva-together-bookmark.png'
+import canvaTogetherTopMask from './assets/canva-together-mask-top.png?inline'
+import canvaTogetherBottomMask from './assets/canva-together-mask-bottom.png?inline'
 import type { TemplateManifest } from './templates'
 
 // These are the two reference compositions rebuilt as editable manifests. The
@@ -14,10 +16,11 @@ export const referenceFrames: TemplateManifest[] = [
     background: { kind: 'solid', color: '#7c0808', secondaryColor: '#f5efe2', scale: 8, angle: 0 },
     theme: { id: 'canva-together', label: 'Canva Together', paper: '#7c0808', ink: '#fffaf0', accent: '#eaa0a7', slotLight: '#fffaf0', slotDark: '#f2dfe0' },
     slots: [
-      // The exported Canva lace is wider than its usable ivory opening. These
-      // bounds are calibrated to keep the guest photo inside that opening.
-      { id: 'canva-together-1', x: .18, y: .10, width: .64, height: .265, shape: 'ellipse', fit: 'cover', zIndex: 10 },
-      { id: 'canva-together-2', x: .18, y: .455, width: .64, height: .265, shape: 'ellipse', fit: 'cover', zIndex: 10 }
+      // Image-derived alpha masks follow the ivory openings rather than leaving
+      // a broad cream ring around a geometric ellipse. Regenerate with
+      // `node scripts/trace-canva-openings.cjs --emit-masks` if artwork changes.
+      { id: 'canva-together-1', x: 80 / 600, y: 120 / 1800, width: 440 / 600, height: 550 / 1800, shape: 'custom', mask: canvaTogetherTopMask, fit: 'cover', zIndex: 10 },
+      { id: 'canva-together-2', x: 80 / 600, y: 770 / 1800, width: 440 / 600, height: 550 / 1800, shape: 'custom', mask: canvaTogetherBottomMask, fit: 'cover', zIndex: 10 }
     ],
     layers: [{ id: 'canva-together-artwork', type: 'image', x: 0, y: 0, width: 1, height: 1, src: canvaTogetherBookmark, opacity: 1, fit: 'cover', focusX: 50, focusY: 50, zIndex: 0, locked: true }],
     createdAt: '2026-09-22T10:35:00.000Z'

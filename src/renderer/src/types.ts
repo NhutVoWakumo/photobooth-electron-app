@@ -49,6 +49,7 @@ export interface SessionFrameSet {
   assignments: Array<string | null>
   slotPositions?: number[]
   slotTransforms?: PhotoTransform[]
+  qrPlacement?: import('./lib/frameQr').FrameQrPlacement
 }
 
 export interface BoothSession {
@@ -57,6 +58,8 @@ export interface BoothSession {
   createdAt: string
   updatedAt: string
   frames: SessionFrameSet[]
+  qrEnabled?: boolean
+  qrSyncedSignature?: string
 }
 
 export const defaultSettings: BoothSettings = {

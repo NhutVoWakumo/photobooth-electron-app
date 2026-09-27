@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ClipboardItem, clipboard, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ClipboardItem, clipboard, dialog, ipcMain, session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildPrintPage, printPageSizeMicrons } from './printPage'
+import { cleanupExpired, configureDrive, connectDrive, driveStatus, frameLink, openDriveFolder, prepareFrameShare, processQueue, queueDriveDeletion, queueFrame, sessionFolder, sessionLink, setSessionSharing, type UploadJob } from './drive'
 
 interface SaveSessionInput {
   eventName: string
@@ -254,6 +255,29 @@ app.whenReady().then(() => {
   ipcMain.handle('output:export-image', (_event, input: { eventName: string; dataUrl: string }) => exportImage(input))
   ipcMain.handle('printer:list', () => listPrinters())
   ipcMain.handle('printer:print-image', (_event, input: PrintImageInput) => printImage(input))
+  ipcMain.handle('drive:connect', async () => { await connectDrive(); await cleanupExpired(); await processQueue() })
+  ipcMain.handle('drive:import-oauth-file', async () => {
+    const result = await dialog.showOpenDialog({ title: 'Choose Google Desktop OAuth JSON', properties: ['openFile'], filters: [{ name: 'Google OAuth JSON', extensions: ['json'] }] })
+    if (result.canceled || !result.filePaths[0]) return false
+    const source = await readFile(result.filePaths[0], 'utf8')
+    if (source.length > 64_000) throw new Error('OAuth JSON file is too large.')
+    const file = JSON.parse(source) as { installed?: { client_id?: string; client_secret?: string } }
+    if (!file.installed || typeof file.installed.client_id !== 'string' || typeof file.installed.client_secret !== 'string') throw new Error('Choose a Desktop OAuth JSON file downloaded from Google Cloud.')
+    await configureDrive(file.installed.client_id, file.installed.client_secret)
+    return true
+  })
+  ipcMain.handle('drive:status', () => driveStatus())
+  ipcMain.handle('drive:queue-frame', (_event, job: UploadJob) => queueFrame(job))
+  ipcMain.handle('drive:prepare-frame', (_event, job: Pick<UploadJob, 'sessionId' | 'sessionName' | 'frameId' | 'frameName' | 'shareFrame'>) => prepareFrameShare(job))
+  ipcMain.handle('drive:process-queue', () => processQueue())
+  ipcMain.handle('drive:frame-link', (_event, sessionId: string, frameId: string) => frameLink(sessionId, frameId))
+  ipcMain.handle('drive:session-folder', (_event, sessionId: string) => sessionFolder(sessionId))
+  ipcMain.handle('drive:session-link', (_event, sessionId: string) => sessionLink(sessionId))
+  ipcMain.handle('drive:session-sharing', (_event, sessionId: string, enabled: boolean) => setSessionSharing(sessionId, enabled))
+  ipcMain.handle('drive:open-folder', (_event, url: string) => openDriveFolder(url))
+  ipcMain.handle('drive:queue-deletion', (_event, sessionId: string, frameId?: string) => queueDriveDeletion(sessionId, frameId))
+  void cleanupExpired().then(() => processQueue())
+  setInterval(() => { void cleanupExpired().then(() => processQueue()) }, 60 * 60 * 1000).unref()
   createWindow()
 
   app.on('activate', () => {

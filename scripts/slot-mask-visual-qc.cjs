@@ -1,0 +1,66 @@
+const { app, BrowserWindow } = require('electron')
+const { build } = require('esbuild')
+const { copyFile, mkdtemp, writeFile } = require('node:fs/promises')
+const { tmpdir } = require('node:os')
+const { join } = require('node:path')
+const { pathToFileURL } = require('node:url')
+
+app.on('window-all-closed', () => {})
+
+async function main() {
+  const directory = await mkdtemp(join(tmpdir(), 'luma-mask-visual-'))
+  const bundle = await build({ entryPoints: [join(__dirname, 'slot-mask-visual-entry.tsx')], bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic', loader: { '.png': 'dataurl', '.jpg': 'dataurl', '.svg': 'dataurl' } })
+  await writeFile(join(directory, 'app.js'), bundle.outputFiles[0].contents)
+  await copyFile(join(__dirname, '../src/renderer/src/styles.css'), join(directory, 'app.css'))
+  await copyFile(join(__dirname, '../src/renderer/src/tokens.css'), join(directory, 'tokens.css'))
+  await writeFile(join(directory, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="app.css"><style>#photo-preview{display:none;width:300px;margin:20px auto}</style></head><body><div id="root"></div><div id="photo-preview"></div><script src="app.js"></script></body></html>')
+  const window = new BrowserWindow({ show: false, width: 1366, height: 820, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
+  try {
+    window.webContents.on('console-message', (_event, details) => { if (details.level === 'error') console.error(details.message) })
+    await window.loadURL(pathToFileURL(join(directory, 'index.html')).toString())
+    await window.webContents.executeJavaScript('new Promise((resolve, reject) => { const started = Date.now(); const check = () => { if (document.querySelector(".studio-mask-workbench")) resolve(true); else if (Date.now() - started > 5000) reject(new Error("Mask editor did not mount.")); else requestAnimationFrame(check) }; check() })')
+    await window.webContents.executeJavaScript('document.fonts.ready')
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    window.webContents.invalidate()
+    const output = join(directory, 'studio.png')
+    await writeFile(output, (await window.webContents.capturePage()).toPNG())
+    console.log(output)
+    const interaction = await window.webContents.executeJavaScript(`(async () => {
+      const click = text => { const button = [...document.querySelectorAll('button')].find(item => item.textContent.includes(text)); if (!button) throw new Error('Missing button ' + text); button.click() }
+      const board = document.querySelector('.studio-mask-drawing')
+      const rect = board.getBoundingClientRect()
+      const send = (name, x, y) => board.dispatchEvent(new PointerEvent(name, { bubbles: true, pointerId: 7, clientX: rect.left + rect.width * x, clientY: rect.top + rect.height * y }))
+      click('Rectangle')
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      send('pointerdown', .15, .15)
+      send('pointermove', .85, .85)
+      send('pointerup', .85, .85)
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      const before = document.querySelector('path').getAttribute('d')
+      click('Show full frame')
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      const after = document.querySelector('path').getAttribute('d')
+      click('Use cutout')
+      return { before, after, result: window.__maskResult }
+    })()`)
+    if (!interaction.before || !interaction.after || !interaction.result?.mask || !interaction.result?.bounds) throw new Error(`Mask drawing interaction failed: ${JSON.stringify(interaction)}`)
+    console.log(JSON.stringify({ interactionPassed: true, bounds: interaction.result.bounds }))
+    for (const [width, height] of [[800, 700], [390, 800]]) {
+      window.setBounds({ x: 0, y: 0, width, height })
+      await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+      const result = join(directory, `studio-${width}.png`)
+      await writeFile(result, (await window.webContents.capturePage()).toPNG())
+      console.log(result)
+    }
+    window.setBounds({ x: 0, y: 0, width: 800, height: 900 })
+    await window.webContents.executeJavaScript(`document.querySelector('.studio-mask-editor-backdrop').style.display='none'; document.querySelector('#photo-preview').style.display='block'; new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`)
+    const preview = join(directory, 'filled-frame.png')
+    await writeFile(preview, (await window.webContents.capturePage()).toPNG())
+    console.log(preview)
+    const exportedPixels = await window.webContents.executeJavaScript('window.__renderReference()')
+    if (exportedPixels[0][2] < 60 || exportedPixels[1][2] < 60 || exportedPixels[2][0] < 50) throw new Error(`Rendered export did not preserve both photo openings and artwork: ${JSON.stringify(exportedPixels)}`)
+    console.log(JSON.stringify({ exportPassed: true, samplePixels: exportedPixels }))
+  } finally { window.destroy() }
+}
+
+app.whenReady().then(main).then(() => app.quit()).catch(error => { console.error(error); process.exit(1) })

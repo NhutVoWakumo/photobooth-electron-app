@@ -9,12 +9,13 @@ import { encodeCapturedCanvas } from '../lib/captureEncoding'
 
 interface Props {
   camera: CameraState; language: Language; settings: BoothSettings; template: TemplateManifest
-  frame: SessionFrameSet; initialSlot: number
+  sessionId: string; sessionName: string; qrEnabled: boolean; frame: SessionFrameSet; initialSlot: number
   onAccept: (photo: string, preview: string, aspectRatio: number, slotIndex: number) => void
   onChange: (frame: SessionFrameSet) => void; onDelete: () => void; onCancel: () => void
+  onRetryCamera: () => void
 }
 
-export function SlotCapture({ camera, language, settings, template, frame, initialSlot, onAccept, onChange, onDelete, onCancel }: Props): JSX.Element {
+export function SlotCapture({ camera, language, settings, template, sessionId, sessionName, qrEnabled, frame, initialSlot, onAccept, onChange, onDelete, onCancel, onRetryCamera }: Props): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
   const mountedRef = useRef(false)
   const timerRef = useRef<number | null>(null)
@@ -69,7 +70,7 @@ export function SlotCapture({ camera, language, settings, template, frame, initi
 
   async function captureSlot(slotIndex: number) {
     const video = videoRef.current
-    if (!video?.videoWidth || !video.videoHeight) { setSequenceRunning(false); setCaptureError(tr(language, 'Camera chưa sẵn sàng. Hãy thử lại.', 'Camera is not ready. Please try again.')); return }
+    if (!video?.videoWidth || !video.videoHeight || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || camera.stream?.getVideoTracks()[0]?.readyState !== 'live') { setSequenceRunning(false); setCaptureError(tr(language, 'Camera chưa sẵn sàng. Hãy thử lại.', 'Camera is not ready. Please try again.')); return }
     setProcessing(true)
     setCaptureError('')
     try {
@@ -87,8 +88,9 @@ export function SlotCapture({ camera, language, settings, template, frame, initi
     context.drawImage(video, sx, sy, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height)
     const { dataUrl, previewDataUrl: preview } = await encodeCapturedCanvas(canvas, settings.captureJpegQuality)
     if (!mountedRef.current) return
-    video.pause()
-    setReviewImage(preview)
+    // The review fills the viewfinder; a 480px thumbnail looks visibly soft here.
+    // Keep the small preview only for the thumbnail rail and persistence UI.
+    setReviewImage(dataUrl)
     setView('photo')
     onAccept(dataUrl, preview, targetRatio, slotIndex)
     setSelectedSlot(slotIndex)
@@ -144,8 +146,8 @@ export function SlotCapture({ camera, language, settings, template, frame, initi
     </aside>
     <main className="capture-focus"><div className="workstation-viewfinder" style={{ aspectRatio, '--capture-ratio': aspectRatio } as CSSProperties}>
       <video ref={attachVideo} onLoadedMetadata={updateResolution} className={`camera-video ${settings.mirrorCamera ? 'mirrored' : ''}`} autoPlay muted playsInline />
-      {view === 'photo' && (reviewImage || previews[selectedSlot]) && <img className="capture-review-photo" src={reviewImage || previews[selectedSlot]!} alt={tr(language, `Ảnh ${selectedSlot + 1}`, `Photo ${selectedSlot + 1}`)} />}
-      {!camera.stream && <p className="camera-note">{tr(language, 'Không có tín hiệu camera.', 'Camera is not available.')}</p>}
+      {view === 'photo' && (reviewImage || assignments[selectedSlot]) && <img className="capture-review-photo" src={reviewImage || assignments[selectedSlot]!} alt={tr(language, `Ảnh ${selectedSlot + 1}`, `Photo ${selectedSlot + 1}`)} />}
+      {!camera.stream && <div className="workstation-camera-recovery" role="alert"><strong>{camera.status === 'requesting' ? tr(language, 'Đang kết nối camera…', 'Connecting to camera…') : tr(language, 'Camera chưa sẵn sàng', 'Camera is not ready')}</strong><p>{camera.errorCode === 'permissionDenied' ? tr(language, 'Hãy cấp quyền camera cho LUMA Booth trong cài đặt hệ điều hành, rồi thử lại.', 'Allow LUMA Booth to use the camera in system settings, then retry.') : camera.errorCode === 'notFound' ? tr(language, 'Không tìm thấy camera. Kiểm tra kết nối hoặc bật webcam rồi thử lại.', 'No camera found. Check the connection or turn on the webcam, then retry.') : camera.errorCode === 'unsupported' ? tr(language, 'Môi trường này không hỗ trợ camera.', 'Camera access is unsupported in this environment.') : tr(language, 'Không mở được camera đã chọn. App sẽ tự thử camera khác khi bạn kết nối lại.', 'Could not open the selected camera. The app will try another available camera when you retry.')}</p>{camera.status !== 'requesting' && <button type="button" onClick={onRetryCamera}>{tr(language, 'Thử kết nối lại', 'Retry camera')}</button>}</div>}
       {countdown !== null && <strong className="countdown" aria-live="assertive">{countdown}</strong>}
       <span className="workstation-badge">{view === 'photo' ? tr(language, `Ảnh ${selectedSlot + 1}`, `Photo ${selectedSlot + 1}`) : resolution.width ? `${cropWidth} × ${cropHeight} · ${aspectRatio.toFixed(2)}:1` : `${aspectRatio.toFixed(2)}:1`}</span>
       {view === 'photo' && <button className="back-to-live" onClick={() => { setView('camera'); void videoRef.current?.play().catch(() => undefined) }}>{tr(language, 'Quay lại camera', 'Back to camera')}</button>}
@@ -156,6 +158,6 @@ export function SlotCapture({ camera, language, settings, template, frame, initi
       <button className="workstation-print" disabled={!complete} onClick={() => setPrintPreview(true)}>{tr(language, 'Xem & in', 'Review & print')}<small>{complete ? tr(language, 'Frame đã sẵn sàng', 'Frame is ready') : tr(language, `Còn ${template.requiredSlots - filled} ảnh`, `${template.requiredSlots - filled} photos left`)}</small></button>
     </aside>
     {captureError ? <p className="camera-source-hint" role="alert">{captureError}</p> : looksLikeScreenCapture && <p className="camera-source-hint" role="status">{tr(language, 'Nếu ảnh bị lặp cửa sổ hoặc dính chữ, hãy chọn Virtual Camera của webcam, không chọn Screen / Display Capture.', 'If the photo repeats app windows or text, choose the webcam Virtual Camera output—not Screen / Display Capture.')}</p>}
-    {printPreview && <OutputEditor language={language} settings={settings} template={template} frame={frame} assignments={assignments} onChange={onChange} onClose={() => setPrintPreview(false)} onSaveExit={onCancel} onDelete={onDelete} />}
+    {printPreview && <OutputEditor language={language} settings={settings} sessionId={sessionId} sessionName={sessionName} qrEnabled={qrEnabled} template={template} frame={frame} assignments={assignments} onChange={onChange} onClose={() => setPrintPreview(false)} onSaveExit={onCancel} onDelete={onDelete} />}
   </section>
 }

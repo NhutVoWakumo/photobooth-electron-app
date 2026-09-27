@@ -1,9 +1,12 @@
 import type { Language, TemplateCopy } from './i18n'
+import { isSlotMask, svgToSlotMask } from './lib/slotMask'
+import type { FrameQrPlacement } from './lib/frameQr'
+import { clampFrameQrPlacement } from './lib/frameQr'
 
 export type TemplateId = string
 export type CustomLayoutKind = 'strip-3' | 'strip-4' | 'grid-6' | 'portrait' | 'landscape' | 'triple' | 'mosaic-3a' | 'mosaic-3b' | 'mosaic-4' | 'duo-vertical' | 'duo-horizontal'
 
-export type FrameSlotShape = 'rectangle' | 'rounded' | 'circle' | 'ellipse' | 'arch' | 'heart' | 'diamond' | 'star' | 'scallop' | 'blob' | 'ticket'
+export type FrameSlotShape = 'rectangle' | 'rounded' | 'circle' | 'ellipse' | 'arch' | 'heart' | 'diamond' | 'star' | 'scallop' | 'blob' | 'ticket' | 'custom'
 export type FrameStickerKind = 'heart' | 'sparkle' | 'flower' | 'bow' | 'smile' | 'music' | 'cloud' | 'bolt' | 'cherry' | 'star'
 export function stickerGlyph(sticker: FrameStickerKind): string {
   return { heart: '♥', sparkle: '✦', flower: '✿', bow: '⋈', smile: '☺', music: '♫', cloud: '☁', bolt: 'ϟ', cherry: '●●', star: '★' }[sticker]
@@ -18,6 +21,7 @@ export interface FrameSlot {
   width: number
   height: number
   shape?: FrameSlotShape
+  mask?: string
   radius?: number
   rotation?: number
   zIndex?: number
@@ -49,6 +53,7 @@ export interface TemplateManifest {
   layers?: FrameLayer[]
   fontAssets?: FrameFontAsset[]
   background?: FrameBackground
+  qrPlacement?: FrameQrPlacement
   theme: FrameTheme
   builtIn?: boolean
   createdAt?: string
@@ -175,8 +180,10 @@ export function parseFrameImport(source: string): TemplateManifest {
   const slots: FrameSlot[] = value.slots.map((slot, index) => {
     if (![slot.x, slot.y, slot.width, slot.height].every(number => typeof number === 'number' && number >= 0 && number <= 1)) throw new Error(`Slot ${index + 1} has invalid coordinates.`)
     if (!slot.width || !slot.height || slot.x! + slot.width! > 1 || slot.y! + slot.height! > 1) throw new Error(`Slot ${index + 1} falls outside the canvas.`)
-    const shape = slot.shape && ['rectangle', 'rounded', 'circle', 'ellipse', 'arch', 'heart', 'diamond', 'star', 'scallop', 'blob', 'ticket'].includes(slot.shape) ? slot.shape : 'rectangle'
-    return { id: slot.id || `slot-${index + 1}`, x: slot.x!, y: slot.y!, width: slot.width!, height: slot.height!, shape, radius: finiteOr(slot.radius, .08), rotation: finiteOr(slot.rotation, 0), zIndex: finiteOr(slot.zIndex, 10), stroke: typeof slot.stroke === 'string' ? slot.stroke : undefined, strokeWidth: Math.max(0, Math.min(20, finiteOr(slot.strokeWidth, 0))), hidden: Boolean(slot.hidden), locked: Boolean(slot.locked), fit: slot.fit === 'cover' ? 'cover' : 'contain' }
+    const shape = slot.shape && ['rectangle', 'rounded', 'circle', 'ellipse', 'arch', 'heart', 'diamond', 'star', 'scallop', 'blob', 'ticket', 'custom'].includes(slot.shape) ? slot.shape : 'rectangle'
+    if (shape === 'custom' && !isSlotMask(slot.mask)) throw new Error(`Slot ${index + 1} has an invalid shape mask.`)
+    const mask = shape === 'custom' && slot.mask?.startsWith('data:image/svg+xml;charset=utf-8,') ? svgToSlotMask(decodeURIComponent(slot.mask.slice('data:image/svg+xml;charset=utf-8,'.length))) : slot.mask
+    return { id: slot.id || `slot-${index + 1}`, x: slot.x!, y: slot.y!, width: slot.width!, height: slot.height!, shape, mask: shape === 'custom' ? mask : undefined, radius: finiteOr(slot.radius, .08), rotation: finiteOr(slot.rotation, 0), zIndex: finiteOr(slot.zIndex, 10), stroke: typeof slot.stroke === 'string' ? slot.stroke : undefined, strokeWidth: Math.max(0, Math.min(20, finiteOr(slot.strokeWidth, 0))), hidden: Boolean(slot.hidden), locked: Boolean(slot.locked), fit: slot.fit === 'cover' ? 'cover' : 'contain' }
   })
   if (Array.isArray(value.layers) && value.layers.length > 100) throw new Error('A frame can contain at most 100 layers.')
   const layers = Array.isArray(value.layers) ? value.layers.map((layer, index) => parseLayer(layer, index)) : []
@@ -189,7 +196,10 @@ export function parseFrameImport(source: string): TemplateManifest {
     ? { id: typeof theme.id === 'string' ? theme.id : 'custom', label: typeof theme.label === 'string' ? theme.label : 'Custom', paper: theme.paper, ink: theme.ink, accent: theme.accent, slotLight: theme.slotLight, slotDark: theme.slotDark }
     : frameThemes[0]
   const background = value.background && ['solid', 'checker', 'grid', 'dots', 'stripes', 'gradient'].includes(value.background.kind) ? { kind: value.background.kind, color: value.background.color || safeTheme.paper, secondaryColor: value.background.secondaryColor || safeTheme.slotLight, scale: Math.max(2, Math.min(30, finiteOr(value.background.scale, 8))), angle: finiteOr(value.background.angle, 0) } : undefined
-  return { id: value.id.startsWith('custom-') ? value.id : `custom-${value.id}`, name: value.name.slice(0, 48), description: value.description?.slice(0, 120) || 'Imported custom layout.', rows: value.rows || 1, columns: value.columns || 1, requiredSlots: slots.length, printLabel: value.printLabel || '4 × 6 in postcard', output: { width: value.output.width || 1200, height: value.output.height || 1800, ppi: Math.max(72, Math.min(600, finiteOr(value.output.ppi, 300))) }, slots, layers, fontAssets, background, theme: safeTheme, createdAt: value.createdAt || new Date().toISOString() }
+  const output = { width: value.output.width || 1200, height: value.output.height || 1800, ppi: Math.max(72, Math.min(600, finiteOr(value.output.ppi, 300))) }
+  const qrPlacement = value.qrPlacement && [value.qrPlacement.x, value.qrPlacement.y, value.qrPlacement.size].every(number => typeof number === 'number' && Number.isFinite(number))
+    ? clampFrameQrPlacement(value.qrPlacement, { output } as TemplateManifest) : undefined
+  return { id: value.id.startsWith('custom-') ? value.id : `custom-${value.id}`, name: value.name.slice(0, 48), description: value.description?.slice(0, 120) || 'Imported custom layout.', rows: value.rows || 1, columns: value.columns || 1, requiredSlots: slots.length, printLabel: value.printLabel || '4 × 6 in postcard', output, slots, layers, fontAssets, background, qrPlacement, theme: safeTheme, createdAt: value.createdAt || new Date().toISOString() }
 }
 
 function finiteOr(value: number | undefined, fallback: number): number {

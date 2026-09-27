@@ -1,6 +1,6 @@
 {
   "name": "luma-booth",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "LUMA offline-first desktop photo booth",
   "main": "./out/main/index.js",
   "scripts": {
@@ -11,7 +11,11 @@
     "dist:win": "npm run build && electron-builder --win",
     "typecheck": "tsc --noEmit",
     "qc:print": "electron scripts/print-qc.cjs",
+    "qc:drive": "electron scripts/drive-qc.cjs",
     "qc:capture": "electron scripts/capture-qc.cjs",
+    "qc:camera": "node --test scripts/camera-access.test.mjs",
+    "qc:camera-live": "electron scripts/camera-live-qc.cjs",
+    "qc:slot-mask": "electron scripts/slot-mask-qc.cjs",
     "preview": "electron-vite preview"
   },
   "author": "LUMA Booth",
@@ -77,12 +81,14 @@
     "@gsap/react": "^2.1.2",
     "fflate": "^0.8.3",
     "gsap": "^3.15.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-colorful": "^5.8.1",
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",

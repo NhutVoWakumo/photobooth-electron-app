@@ -3,8 +3,10 @@ import { getTemplateCopy, type FrameBackground, type FrameLayer, type FrameSlot,
 import { StickerIcon } from './StickerIcon'
 import { tr, type Language } from '../i18n'
 import { shapeBorderRadius, shapeClipPath } from '../lib/frameGeometry'
+import { slotMaskStyle } from '../lib/slotMask'
 import type { PhotoTransform } from '../types'
 import { loadFrameFonts } from '../lib/frameFonts'
+import { clampFrameQrPlacement, type FrameQrPlacement } from '../lib/frameQr'
 
 interface FrameArtworkProps {
   template: TemplateManifest
@@ -17,10 +19,14 @@ interface FrameArtworkProps {
   photoPositions?: number[]
   photoTransforms?: PhotoTransform[]
   onPhotoTransform?: (slotIndex: number, transform: PhotoTransform) => void
+  qrDataUrl?: string
+  qrPlacement?: FrameQrPlacement
+  onQrPlacementChange?: (placement: FrameQrPlacement) => void
 }
 
-export function FrameArtwork({ template, photos = [], activeSlot, onSlotClick, selected = false, label, language = 'vi', photoPositions = [], photoTransforms = [], onPhotoTransform }: FrameArtworkProps): JSX.Element {
+export function FrameArtwork({ template, photos = [], activeSlot, onSlotClick, selected = false, label, language = 'vi', photoPositions = [], photoTransforms = [], onPhotoTransform, qrDataUrl, qrPlacement, onQrPlacementChange }: FrameArtworkProps): JSX.Element {
   const dragRef = useRef<{ slotIndex: number; pointerId: number; x: number; y: number; transform: PhotoTransform } | null>(null)
+  const qrDragRef = useRef<{ pointerId: number; x: number; y: number; placement: FrameQrPlacement } | null>(null)
   useEffect(() => { void loadFrameFonts(template) }, [template])
   const getTransform = (index: number): PhotoTransform => photoTransforms[index] ?? { x: 0, y: ((photoPositions[index] ?? 50) - 50) * 2, scale: 1 }
   const pointerDown = (event: PointerEvent<HTMLElement>, index: number) => {
@@ -57,18 +63,30 @@ export function FrameArtwork({ template, photos = [], activeSlot, onSlotClick, s
       <div className="frame-slots">
         {template.slots.map((slot, index) => {
           const transform = getTransform(index)
-          const content = <>{photos[index] ? <img alt={tr(language, `Ảnh đã chọn cho ô ${index + 1}`, `Selected photo for slot ${index + 1}`)} draggable={false} src={photos[index]!} style={{ objectFit: 'cover', objectPosition: `${(transform.x + 100) / 2}% ${(transform.y + 100) / 2}%`, transform: `scale(${transform.scale})` }} /> : <i>{index + 1}</i>}</>
+          const content = <>{photos[index] ? <img alt={tr(language, `Ảnh đã chọn cho ô ${index + 1}`, `Selected photo for slot ${index + 1}`)} draggable={false} src={photos[index]!} style={{ objectFit: slot.fit ?? 'contain', objectPosition: `${(transform.x + 100) / 2}% ${(transform.y + 100) / 2}%`, transform: `scale(${transform.scale})` }} /> : <i>{index + 1}</i>}</>
           const className = `frame-slot ${activeSlot === index ? 'active' : ''} ${photos[index] ? 'filled' : ''}`
           // Slots are stored in normalized coordinates for the complete print canvas.
           // Keeping previews on that same canvas prevents landscape and mosaic layouts
           // from being stretched into a fixed, portrait-only middle area.
-          const slotStyle = { left: `${slot.x * 100}%`, top: `${slot.y * 100}%`, width: `${slot.width * 100}%`, height: `${slot.height * 100}%`, clipPath: shapeClipPath(slot.shape), borderRadius: shapeBorderRadius(slot.shape, slot.radius), transform: slot.rotation ? `rotate(${slot.rotation}deg)` : undefined, zIndex: slot.zIndex ?? 10, boxShadow: slot.strokeWidth ? `inset 0 0 0 ${slot.strokeWidth}px ${slot.stroke ?? template.theme.ink}` : undefined, display: slot.hidden ? 'none' : undefined }
+          const slotStyle = { left: `${slot.x * 100}%`, top: `${slot.y * 100}%`, width: `${slot.width * 100}%`, height: `${slot.height * 100}%`, clipPath: shapeClipPath(slot.shape), borderRadius: shapeBorderRadius(slot.shape, slot.radius), ...slotMaskStyle(slot.shape === 'custom' ? slot.mask : undefined), transform: slot.rotation ? `rotate(${slot.rotation}deg)` : undefined, zIndex: slot.zIndex ?? 10, boxShadow: slot.strokeWidth ? `inset 0 0 0 ${slot.strokeWidth}px ${slot.stroke ?? template.theme.ink}` : undefined, display: slot.hidden ? 'none' : undefined }
           const pointerProps = onPhotoTransform ? { onPointerDown: (event: PointerEvent<HTMLElement>) => pointerDown(event, index), onPointerMove: pointerMove, onPointerUp: pointerUp, onPointerCancel: pointerUp } : {}
           return onSlotClick ? <button aria-label={tr(language, `Thay ảnh trong ô ${index + 1}`, `Replace photo in slot ${index + 1}`)} className={className} key={slot.id} style={slotStyle} onClick={() => onSlotClick(index)} {...pointerProps}>{content}</button> : <span className={className} key={slot.id} style={slotStyle} {...pointerProps}>{content}</span>
         })}
       </div>
       {upperLayers.map(layer => <ArtworkLayer key={layer.id} layer={layer} />)}
       {(template.layers?.length ?? 0) === 0 && <><span className="frame-topline">LUMA BOOTH</span><span className="frame-footer">A MOMENT, KEPT</span></>}
+      {qrDataUrl && qrPlacement && <div className={`frame-qr-overlay ${onQrPlacementChange ? 'editable' : ''}`} style={{ left: `${(qrPlacement.x - qrPlacement.size * 0.09) * 100}%`, top: `${(qrPlacement.y - qrPlacement.size * template.output.width / template.output.height * 0.09) * 100}%`, width: `${qrPlacement.size * 1.18 * 100}%` }} onPointerDown={event => {
+        if (!onQrPlacementChange) return
+        event.stopPropagation()
+        event.currentTarget.setPointerCapture(event.pointerId)
+        qrDragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, placement: qrPlacement }
+      }} onPointerMove={event => {
+        const drag = qrDragRef.current
+        if (!drag || drag.pointerId !== event.pointerId || !onQrPlacementChange) return
+        const bounds = event.currentTarget.parentElement?.getBoundingClientRect()
+        if (!bounds) return
+        onQrPlacementChange(clampFrameQrPlacement({ ...drag.placement, x: drag.placement.x + (event.clientX - drag.x) / bounds.width, y: drag.placement.y + (event.clientY - drag.y) / bounds.height }, template))
+      }} onPointerUp={() => { qrDragRef.current = null }} onPointerCancel={() => { qrDragRef.current = null }}><img src={qrDataUrl} alt="" draggable={false} /></div>}
     </div>
   )
 }

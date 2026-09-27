@@ -129,6 +129,31 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
   const [printers, setPrinters] = useState<Array<{ name: string; displayName: string; description: string }>>([])
   const [printerError, setPrinterError] = useState('')
   const [loadingPrinters, setLoadingPrinters] = useState(false)
+  const [driveStatus, setDriveStatus] = useState<{ configured: boolean; connected: boolean; pending: number; message: string } | null>(null)
+  const [driveBusy, setDriveBusy] = useState(false)
+  const [driveError, setDriveError] = useState('')
+  useEffect(() => { void window.booth?.driveStatus().then(setDriveStatus).catch(() => undefined) }, [])
+  const connectDrive = async () => {
+    if (!window.booth) return
+    setDriveBusy(true); setDriveError('')
+    try { await window.booth.driveConnect(); setDriveStatus(await window.booth.driveStatus()); window.dispatchEvent(new Event('luma-drive-changed')) }
+    catch (error) { setDriveError(error instanceof Error ? error.message : String(error)) }
+    finally { setDriveBusy(false) }
+  }
+  const importDriveSetup = async () => {
+    if (!window.booth) return
+    setDriveBusy(true); setDriveError('')
+    try {
+      if (!await window.booth.driveImportOAuthFile()) return
+      setDriveStatus(await window.booth.driveStatus())
+      await window.booth.driveConnect()
+      setDriveStatus(await window.booth.driveStatus())
+      window.dispatchEvent(new Event('luma-drive-changed'))
+    } catch (error) {
+      setDriveError(error instanceof Error ? error.message : String(error))
+      setDriveStatus(await window.booth.driveStatus().catch(() => null))
+    } finally { setDriveBusy(false) }
+  }
   const refreshPrinters = async () => {
     setLoadingPrinters(true)
     setPrinterError('')
@@ -151,6 +176,18 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
       <div className="settings-field"><div className="field-heading"><span>{t(draft.language, 'printer')}</span><button className="text-button" type="button" onClick={() => void refreshPrinters()} disabled={loadingPrinters}>{loadingPrinters ? tr(draft.language, 'Đang tìm…', 'Searching…') : t(draft.language, 'refresh')}</button></div>
         <select aria-label={t(draft.language, 'printer')} value={draft.printerName} onChange={event => update('printerName', event.target.value)}><option value="none">{t(draft.language, 'noPrinter')}</option>{draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) && <option value={draft.printerName}>{draft.printerName} — {tr(draft.language, 'không kết nối', 'unavailable')}</option>}{printers.map(printer => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}</option>)}</select>
         <small className="field-help">{printerError || (draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) ? tr(draft.language, 'Máy in đã chọn không còn kết nối. Hãy chọn lại.', 'The selected printer is unavailable. Choose another.') : tr(draft.language, 'Chọn máy in thật, lưu cài đặt, rồi bấm In ngay để in không cần hộp thoại.', 'Choose a connected printer and save. Print now will send directly without a dialog.'))}</small></div>
+    </SettingsGroup>
+    <SettingsGroup title={tr(draft.language, 'Chia sẻ ảnh', 'Photo sharing')}>
+      <div className="settings-field drive-setup-field"><div className="field-heading"><span>Google Drive</span></div>
+        <p className="field-help">{driveStatus?.connected ? tr(draft.language, 'Đã kết nối trên máy này. QR mặc định bật cho các phiên.', 'Connected on this computer. QR is on by default for sessions.') : tr(draft.language, 'Chưa kết nối. QR tắt; ảnh vẫn lưu trên máy.', 'Not connected. QR is off; photos stay on this computer.')}</p>
+        <div className="drive-setup-actions">
+          {!driveStatus?.connected && driveStatus?.configured && <button className="secondary-button" type="button" disabled={driveBusy} onClick={() => void connectDrive()}>{driveBusy ? tr(draft.language, 'Đang kết nối…', 'Connecting…') : tr(draft.language, 'Kết nối Google Drive', 'Connect Google Drive')}</button>}
+          <button className="secondary-button" type="button" disabled={driveBusy} onClick={() => void importDriveSetup()}>{driveStatus?.configured ? tr(draft.language, 'Đổi file thiết lập', 'Change setup file') : tr(draft.language, 'Chọn file thiết lập Google', 'Choose Google setup file')}</button>
+        </div>
+        {!driveStatus?.configured && <small className="field-help">{tr(draft.language, 'Dùng file JSON loại Desktop app tải từ Google Cloud của bạn. App không có sẵn tài khoản hay token nào.', 'Use your own Desktop app JSON from Google Cloud. This app ships with no account or token.')}</small>}
+        {driveStatus?.configured && <small className="field-help">{tr(draft.language, 'Cấu hình được giữ riêng trên máy này, không nằm trong file cài.', 'Setup stays on this computer, not in the installer.')}</small>}
+        {driveError && <small className="field-help" role="alert">{driveError}</small>}
+      </div>
     </SettingsGroup>
   </div>
 }

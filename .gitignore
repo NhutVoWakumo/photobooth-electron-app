@@ -8,6 +8,9 @@ release/
 *.jpg
 *.jpeg
 *.png
+# Generated alpha masks for the bundled Canva reference frame (not captures).
+!src/renderer/src/assets/canva-together-mask-top.png
+!src/renderer/src/assets/canva-together-mask-bottom.png
 *.webp
 *.heic
 *.tif
