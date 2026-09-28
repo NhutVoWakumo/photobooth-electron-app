@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ClipboardItem, clipboard, dialog, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ClipboardItem, clipboard, dialog, ipcMain, session, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -49,6 +49,41 @@ function createWindow(): void {
   } else {
     window.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+interface UpdateCheckResult {
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+  releaseUrl: string
+}
+
+async function checkForUpdates(): Promise<UpdateCheckResult> {
+  const response = await fetch('https://api.github.com/repos/NhutVoWakumo/photobooth-electron-app/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LUMA-Booth' },
+    signal: AbortSignal.timeout(10_000)
+  })
+  if (!response.ok) throw new Error(response.status === 404 ? 'No public release was found.' : `GitHub returned ${response.status}.`)
+  const release = await response.json() as { tag_name?: unknown; html_url?: unknown; draft?: unknown; prerelease?: unknown }
+  if (release.draft || release.prerelease || typeof release.tag_name !== 'string' || typeof release.html_url !== 'string') {
+    throw new Error('The latest release information is unavailable.')
+  }
+  const releaseUrl = new URL(release.html_url)
+  if (releaseUrl.protocol !== 'https:' || releaseUrl.hostname !== 'github.com' || releaseUrl.pathname !== '/NhutVoWakumo/photobooth-electron-app/releases/tag/' + encodeURIComponent(release.tag_name)) {
+    throw new Error('GitHub returned an invalid release link.')
+  }
+  const latestVersion = release.tag_name.replace(/^v/, '')
+  const currentVersion = app.getVersion()
+  const parseVersion = (version: string) => version.split('.').map(part => Number.parseInt(part, 10))
+  const current = parseVersion(currentVersion)
+  const latest = parseVersion(latestVersion)
+  if ([...current, ...latest].some(part => !Number.isFinite(part))) throw new Error('The release version is invalid.')
+  let comparison = 0
+  for (let index = 0; index < Math.max(current.length, latest.length); index += 1) {
+    const delta = (latest[index] ?? 0) - (current[index] ?? 0)
+    if (delta !== 0) { comparison = delta > 0 ? 1 : -1; break }
+  }
+  return { currentVersion, latestVersion, updateAvailable: comparison > 0, releaseUrl: releaseUrl.toString() }
 }
 
 function toBuffer(dataUrl: string): Buffer {
@@ -185,6 +220,8 @@ interface PrintImageInput {
   height: number
   ppi: number
   profile: PrinterProfile
+  autoRotate?: boolean
+  copies?: number
 }
 
 let printInProgress = false
@@ -202,7 +239,9 @@ async function printImage(input: PrintImageInput): Promise<void> {
   if (typeof input.dataUrl !== 'string' || !/^data:image\/jpeg;base64,/.test(input.dataUrl)) throw new Error('Invalid print image.')
   if (![input.width, input.height, input.ppi].every(Number.isFinite) || input.width < 300 || input.height < 300 || input.ppi < 72) throw new Error('Invalid print dimensions.')
   if (!isPrinterProfile(input.profile)) throw new Error('Choose a paper size for this printer in Settings.')
-  const paper = paperDimensions(input.profile, input.width > input.height)
+  const copies = input.copies ?? 1
+  if (!Number.isInteger(copies) || copies < 1 || copies > 99) throw new Error('Choose between 1 and 99 print copies.')
+  const paper = paperDimensions(input.profile, input.autoRotate !== false && input.width > input.height)
   const printers = await listPrinters()
   if (!printers.some(printer => printer.name === input.printerName)) throw new Error('The selected printer is no longer available. Reconnect it or choose another printer in Settings.')
 
@@ -227,7 +266,7 @@ async function printImage(input: PrintImageInput): Promise<void> {
         margins: { marginType: 'none' },
         pageSize: printPageSizeMicrons(paper.widthMm, paper.heightMm),
         landscape: false,
-        copies: 1
+        copies
       }, (success, reason) => {
         clearTimeout(timeout)
         if (success) resolve()
@@ -253,6 +292,12 @@ app.whenReady().then(() => {
   ipcMain.handle('storage:delete-workspace', (_event, id: string) => deleteWorkspace(id))
   ipcMain.handle('storage:load-settings', () => loadSettings())
   ipcMain.handle('storage:save-settings', (_event, value: unknown) => saveSettings(value))
+  ipcMain.handle('app:check-updates', () => checkForUpdates())
+  ipcMain.handle('app:open-update-page', async (_event, url: string) => {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com' || !parsed.pathname.startsWith('/NhutVoWakumo/photobooth-electron-app/releases/')) throw new Error('Invalid release URL.')
+    await shell.openExternal(parsed.toString())
+  })
   ipcMain.handle('output:export-image', (_event, input: { eventName: string; dataUrl: string }) => exportImage(input))
   ipcMain.handle('printer:list', () => listPrinters())
   ipcMain.handle('printer:print-image', (_event, input: PrintImageInput) => printImage(input))

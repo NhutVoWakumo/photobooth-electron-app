@@ -192,7 +192,7 @@ export async function queueDriveDeletion(sessionId: string, frameId?: string): P
     if (!state.deletions.some(item => item.sessionId === sessionId && item.frameId === frameId)) state.deletions.push({ sessionId, frameId })
   }
   await saveState(state)
-  void processQueue()
+  await processQueue()
 }
 async function deleteRemote(state: CloudState, target: { sessionId: string; frameId?: string }): Promise<void> {
   const session = state.sessions[target.sessionId]

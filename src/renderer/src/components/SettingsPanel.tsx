@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type JSX, type ReactNode } from 'react'
 import type { CameraDevice, CameraStatus } from '../hooks/useCamera'
-import type { BoothSettings } from '../types'
+import { defaultSettings, type BoothSettings } from '../types'
 import { t, tr } from '../i18n'
 import { BrandLogo } from './BrandLogo'
 import { FrameArtwork } from './FrameArtwork'
@@ -119,7 +119,7 @@ function SettingsPageHeader({ title, description, aside }: { title: string; desc
   </div>
 }
 
-function SettingsGroup({ title, children }: { title: string; children: JSX.Element | JSX.Element[] }): JSX.Element {
+function SettingsGroup({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return <section className="settings-group"><h4>{title}</h4><div className="settings-group-body">{children}</div></section>
 }
 
@@ -133,6 +133,9 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
   const [driveStatus, setDriveStatus] = useState<{ configured: boolean; connected: boolean; pending: number; message: string } | null>(null)
   const [driveBusy, setDriveBusy] = useState(false)
   const [driveError, setDriveError] = useState('')
+  const [updateBusy, setUpdateBusy] = useState(false)
+  const [updateResult, setUpdateResult] = useState<{ currentVersion: string; latestVersion: string; updateAvailable: boolean; releaseUrl: string } | null>(null)
+  const [updateError, setUpdateError] = useState('')
   const printerProfile = draft.printerProfiles?.[draft.printerName]
   const updatePrinterProfile = (profile: PrinterProfile) => {
     if (draft.printerName === 'none') return
@@ -170,6 +173,17 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
       setPrinterError(error instanceof Error ? error.message : String(error))
     } finally { setLoadingPrinters(false) }
   }
+  const checkUpdates = async () => {
+    setUpdateBusy(true)
+    setUpdateError('')
+    try {
+      if (!window.booth) throw new Error(tr(draft.language, 'Chỉ có trong ứng dụng desktop.', 'Available in the desktop app only.'))
+      setUpdateResult(await window.booth.checkForUpdates())
+    } catch (error) {
+      setUpdateResult(null)
+      setUpdateError(error instanceof Error ? error.message : String(error))
+    } finally { setUpdateBusy(false) }
+  }
   useEffect(() => { void refreshPrinters() }, [])
   return <div className="settings-section">
     <SettingsPageHeader title={tr(draft.language, 'Sự kiện & thiết bị', 'Event & devices')} description={tr(draft.language, 'Thông tin hiển thị và phần cứng dùng trong booth.', 'Identity and hardware used by this booth.')} />
@@ -178,7 +192,13 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
         <select aria-label={t(draft.language, 'cameraAria')} value={selectedCameraId} onChange={event => onSelectCamera(event.target.value)} disabled={cameraDevices.length === 0}>
           {cameraDevices.length === 0 ? <option value="">{t(draft.language, 'noCamera')}</option> : cameraDevices.map(camera => <option key={camera.id} value={camera.id}>{camera.label}</option>)}
         </select><small className="field-help">{cameraStatus === 'denied' ? t(draft.language, 'cameraPermissionBlocked') : t(draft.language, 'cameraPermissionHelp')}</small></div>
-      <label className="settings-check"><input type="checkbox" checked={draft.mirrorCamera} onChange={event => update('mirrorCamera', event.target.checked)} /><span>{tr(draft.language, 'Lật gương camera và ảnh chụp', 'Mirror camera and captured photos')}<small>{tr(draft.language, 'Bật cho webcam kiểu selfie. Tắt khi dùng máy ảnh rời nếu muốn ảnh đúng chiều thực tế.', 'Keep this on for a selfie-style webcam. Turn it off for an external camera when you want the real-world orientation.')}</small></span></label>
+      <label className="settings-check"><input type="checkbox" checked={draft.mirrorLiveView} onChange={event => update('mirrorLiveView', event.target.checked)} /><span>{tr(draft.language, 'Lật gương màn xem trước', 'Mirror live view')}<small>{tr(draft.language, 'Chỉ đổi hình khách nhìn khi chụp; không đổi ảnh được lưu.', 'Changes only what guests see before capture, not the saved photo.')}</small></span></label>
+      <label className="settings-check"><input type="checkbox" checked={draft.mirrorCamera} onChange={event => update('mirrorCamera', event.target.checked)} /><span>{tr(draft.language, 'Lật gương ảnh được lưu', 'Mirror captured photos')}<small>{tr(draft.language, 'Bật cho ảnh kiểu selfie; tắt để chữ trong ảnh giữ chiều thực tế.', 'On for selfie-style photos; off to preserve the real-world direction of text.')}</small></span></label>
+      <label className="settings-check"><input type="checkbox" checked={draft.liveViewEnabled} onChange={event => update('liveViewEnabled', event.target.checked)} /><span>{tr(draft.language, 'Hiện hình camera trực tiếp', 'Enable live view')}<small>{tr(draft.language, 'Tắt hình xem trước để giảm tải hiển thị; camera vẫn hoạt động khi chụp.', 'Hide the preview to reduce rendering load; the camera still captures photos.')}</small></span></label>
+      <label className="settings-check"><input type="checkbox" checked={draft.displayCameraOnStartScreen} onChange={event => update('displayCameraOnStartScreen', event.target.checked)} /><span>{tr(draft.language, 'Hiện camera ở màn hình bắt đầu', 'Display on start screen')}<small>{tr(draft.language, 'Khi bật, app mở camera tại trang chính và tắt khi rời trang đó.', 'When enabled, the camera opens on the home screen and closes when you leave it.')}</small></span></label>
+      <SegmentedSetting label={tr(draft.language, 'Xoay camera', 'Camera rotation')} value={String(draft.cameraRotation)} options={[0, 90, 180, 270].map(degrees => ({ value: String(degrees), label: `${degrees}°` }))} onChange={value => update('cameraRotation', Number(value) as BoothSettings['cameraRotation'])} />
+      <label className="settings-check"><input type="checkbox" checked={draft.autoTriggerAfterCountdown} onChange={event => update('autoTriggerAfterCountdown', event.target.checked)} /><span>{tr(draft.language, 'Tự chụp sau đếm ngược', 'Trigger automatically')}<small>{tr(draft.language, 'Tắt để hiện nút xác nhận chụp sau khi đếm ngược kết thúc.', 'Turn off to require a tap after the countdown finishes.')}</small></span></label>
+      <p className="field-help camera-capability-note">{tr(draft.language, 'Điều khiển màn trập, ISO và Canon Auto Exposure chưa được hỗ trợ với webcam/camera chuẩn hiện tại. Cần kết nối tether riêng theo model máy ảnh.', 'Shutter, ISO, and Canon Auto Exposure are not available through the current standard webcam connection. Camera tethering must be added per model.')}</p>
       <div className="settings-field"><div className="field-heading"><span>{t(draft.language, 'printer')}</span><button className="text-button" type="button" onClick={() => void refreshPrinters()} disabled={loadingPrinters}>{loadingPrinters ? tr(draft.language, 'Đang tìm…', 'Searching…') : t(draft.language, 'refresh')}</button></div>
         <select aria-label={t(draft.language, 'printer')} value={draft.printerName} onChange={event => update('printerName', event.target.value)}><option value="none">{t(draft.language, 'noPrinter')}</option>{draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) && <option value={draft.printerName}>{draft.printerName} — {tr(draft.language, 'không kết nối', 'unavailable')}</option>}{printers.map(printer => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}</option>)}</select>
         <small className="field-help">{printerError || (draft.printerName !== 'none' && !printers.some(printer => printer.name === draft.printerName) ? tr(draft.language, 'Máy in đã chọn không còn kết nối. Hãy chọn lại.', 'The selected printer is unavailable. Choose another.') : tr(draft.language, 'Chọn đúng khổ giấy đang đặt trong driver. Mỗi máy in nhớ cấu hình riêng.', 'Match the paper loaded in the printer driver. Each printer keeps its own setup.'))}</small></div>
@@ -189,11 +209,7 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
           {Object.entries(paperSizes).map(([value, paper]) => <option key={value} value={value}>{paper.label}</option>)}
         </select>
         <small className="field-help">{tr(draft.language, 'Canon giấy văn phòng: chọn A5/A4 giống driver. DNP: chọn đúng cỡ media đang lắp; 4×6 là điểm bắt đầu cho RX1HS/QW410.', 'Office printer: match A5/A4 in its driver. DNP: match the loaded media; 4×6 is a starting point for RX1HS/QW410.')}</small>
-        {printerProfile && <>
-          <SegmentedSetting label={tr(draft.language, 'Căn ảnh trên giấy', 'Fit on paper')} value={printerProfile.fit} options={[{ value: 'contain', label: tr(draft.language, 'Vừa toàn bộ · có viền', 'Fit all · may have borders') }, { value: 'cover', label: tr(draft.language, 'Phủ kín · có thể cắt', 'Fill · may crop') }]} onChange={value => updatePrinterProfile({ ...printerProfile, fit: value as PrinterProfile['fit'] })} />
-          <TouchRange label={tr(draft.language, 'Lề an toàn', 'Safe margin')} value={printerProfile.marginMm} min={0} max={12} step={1} valueLabel={`${printerProfile.marginMm} mm`} onChange={value => updatePrinterProfile({ ...printerProfile, marginMm: value })} />
-          <small className="field-help">{tr(draft.language, 'Để 3 mm khi thử máy mới. Chỉ giảm về 0 sau khi in thử và xác nhận driver hỗ trợ in sát mép.', 'Start at 3 mm for a new printer. Use 0 only after a test confirms borderless printing.')}</small>
-        </>}
+        {printerProfile && <small className="field-help">{tr(draft.language, 'Cỡ giấy ở đây là mặc định. Có thể chọn cỡ khác riêng trong từng session.', 'This is the default paper size. Each session can override it.')}</small>}
       </div>}</>
     </SettingsGroup>
     <SettingsGroup title={tr(draft.language, 'Chia sẻ ảnh', 'Photo sharing')}>
@@ -206,6 +222,19 @@ function GeneralSettings({ cameraDevices, cameraStatus, draft, selectedCameraId,
         {driveStatus?.configured && <small className="field-help">{tr(draft.language, 'Đăng nhập bằng Google của bạn; ảnh sẽ lưu vào Drive của bạn. Không cần file thiết lập.', 'Sign in with your own Google account. Photos go to your Drive; no setup file needed.')}</small>}
         <details className="drive-advanced"><summary>{tr(draft.language, 'Thiết lập nâng cao', 'Advanced setup')}</summary><button className="secondary-button" type="button" disabled={driveBusy} onClick={() => void importDriveSetup()}>{tr(draft.language, 'Nhập file OAuth Desktop riêng', 'Import a different Desktop OAuth file')}</button></details>
         {driveError && <small className="field-help" role="alert">{driveError}</small>}
+      </div>
+    </SettingsGroup>
+    <SettingsGroup title={tr(draft.language, 'Cập nhật ứng dụng', 'App updates')}>
+      <div className="settings-field">
+        <p className="field-help">{tr(draft.language, 'Kiểm tra phiên bản mới từ GitHub. Cập nhật sẽ mở trang tải bộ cài; dữ liệu session và cài đặt được lưu riêng với ứng dụng.', 'Check GitHub for a newer version. Updates open the installer download page; sessions and settings are stored separately from the app.')}</p>
+        <div className="drive-setup-actions">
+          <button className="secondary-button" type="button" disabled={updateBusy} onClick={() => void checkUpdates()}>{updateBusy ? tr(draft.language, 'Đang kiểm tra…', 'Checking…') : tr(draft.language, 'Kiểm tra cập nhật', 'Check for updates')}</button>
+          {updateResult?.updateAvailable && <button className="primary-button" type="button" onClick={() => void window.booth?.openUpdatePage(updateResult.releaseUrl)}>{tr(draft.language, `Tải bản ${updateResult.latestVersion}`, `Download ${updateResult.latestVersion}`)}</button>}
+        </div>
+        {updateError && <small className="field-help" role="alert">{tr(draft.language, 'Không kiểm tra được. Hãy kiểm tra kết nối mạng rồi thử lại.', 'Could not check for updates. Check your internet connection and try again.')} ({updateError})</small>}
+        {updateResult && <small className="field-help" role="status">{updateResult.updateAvailable
+          ? tr(draft.language, `Đang dùng ${updateResult.currentVersion}. Có bản mới ${updateResult.latestVersion}.`, `You have ${updateResult.currentVersion}. Version ${updateResult.latestVersion} is available.`)
+          : tr(draft.language, `Đang dùng bản mới nhất (${updateResult.currentVersion}).`, `You’re up to date (${updateResult.currentVersion}).`)}</small>}
       </div>
     </SettingsGroup>
   </div>
@@ -303,12 +332,21 @@ function FrameSettings({ draft, update, onOpenStudio }: { draft: BoothSettings; 
 }
 
 function CaptureSettings({ draft, update }: { draft: BoothSettings; update: UpdateSetting }): JSX.Element {
+  // Settings may be open during a hot update with the previous in-memory schema.
+  const firstCountdown = draft.firstPhotoCountdownSeconds ?? defaultSettings.firstPhotoCountdownSeconds
+  const nextCountdown = draft.nextPhotoCountdownSeconds ?? defaultSettings.nextPhotoCountdownSeconds
+  const reviewSeconds = (draft.postCaptureReviewMs ?? defaultSettings.postCaptureReviewMs) / 1000
   return <div className="settings-section">
     <SettingsPageHeader title={tr(draft.language, 'Flow chụp ảnh', 'Capture flow')} description={tr(draft.language, 'Điều chỉnh cách khách chụp, xem và chụp lại.', 'Control how guests capture, review, and retake photos.')} />
     <SettingsGroup title={tr(draft.language, 'Nhịp chụp tự động', 'Automatic timing')}>
-      <TouchRange label={t(draft.language, 'countdown')} value={draft.countdownSeconds} min={0} max={10} step={1} valueLabel={`${draft.countdownSeconds}s`} onChange={value => update('countdownSeconds', value)} />
-      <TouchRange label={tr(draft.language, 'Thời gian xem mỗi ảnh', 'Review each photo')} value={draft.postCaptureReviewMs / 1000} min={0} max={5} step={1} valueLabel={`${draft.postCaptureReviewMs / 1000}s`} onChange={value => update('postCaptureReviewMs', value * 1000)} />
+      <TouchRange label={tr(draft.language, 'Đếm ngược ảnh đầu tiên', 'First photo countdown')} value={firstCountdown} min={1} max={30} step={1} valueLabel={`${firstCountdown}s`} onChange={value => update('firstPhotoCountdownSeconds', value)} />
+      <TouchRange label={tr(draft.language, 'Đếm ngược các ảnh tiếp theo', 'Next photo countdown')} value={nextCountdown} min={1} max={30} step={1} valueLabel={`${nextCountdown}s`} onChange={value => update('nextPhotoCountdownSeconds', value)} />
+      <TouchRange label={tr(draft.language, 'Xem lại sau mỗi ảnh', 'Photo preview duration')} value={reviewSeconds} min={1} max={30} step={1} valueLabel={`${reviewSeconds}s`} onChange={value => update('postCaptureReviewMs', value * 1000)} />
       <p className="touch-setting-note">{tr(draft.language, 'Sau khi bấm Capture, booth sẽ tự đếm ngược, chụp, cho xem ảnh rồi chuyển sang slot kế tiếp.', 'After Capture, the booth counts down, takes the photo, shows it, and automatically continues to the next slot.')}</p>
+    </SettingsGroup>
+    <SettingsGroup title={tr(draft.language, 'Diện mạo ảnh chụp', 'Photo look')}>
+      <SegmentedSetting label={tr(draft.language, 'Hiệu ứng ảnh', 'Photo effect')} value={draft.photoEffect} options={[{ value: 'none', label: tr(draft.language, 'Gốc', 'Original') }, { value: 'monochrome', label: tr(draft.language, 'Đen trắng', 'B&W') }, { value: 'sepia', label: 'Sepia' }]} onChange={value => update('photoEffect', value as BoothSettings['photoEffect'])} />
+      <p className="touch-setting-note">{tr(draft.language, 'Hiệu ứng hiện trên camera và được ghi vào từng ảnh chụp; ảnh cũ không bị thay đổi.', 'The effect appears in live view and is saved into each new photo. Existing photos stay unchanged.')}</p>
     </SettingsGroup>
   </div>
 }

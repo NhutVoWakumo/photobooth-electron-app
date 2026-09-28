@@ -40,6 +40,14 @@ export interface FrameFreehandLayer extends FrameLayerState { id: string; type: 
 export interface FrameStickerLayer extends FrameLayerState { id: string; type: 'sticker'; x: number; y: number; width: number; height: number; sticker: FrameStickerKind; color: string; secondaryColor: string; stroke: string; strokeWidth: number; rotation?: number; zIndex: number }
 export type FrameLayer = FrameTextLayer | FrameShapeLayer | FrameImageLayer | FrameFreehandLayer | FrameStickerLayer
 export interface FrameTheme { id: string; label: string; paper: string; ink: string; accent: string; slotLight: string; slotDark: string }
+export interface FramePrintLayout { mode: 'single' | 'duplicate-2up'; gutterMm: number; cutGuide: boolean }
+export function isTwoUpCompatible(template: Pick<TemplateManifest, 'output'>): boolean {
+  return Math.abs(template.output.width * 3 - template.output.height) <= 1
+}
+export function framePrintLayout(template: TemplateManifest): FramePrintLayout {
+  const mode = isTwoUpCompatible(template) ? template.printLayout?.mode ?? 'duplicate-2up' : 'single'
+  return { mode, gutterMm: Math.max(0, Math.min(5, template.printLayout?.gutterMm ?? 0)), cutGuide: template.printLayout?.cutGuide === true }
+}
 export interface TemplateManifest {
   id: TemplateId
   name: string
@@ -48,6 +56,7 @@ export interface TemplateManifest {
   columns: number
   requiredSlots: number
   printLabel: string
+  printLayout?: FramePrintLayout
   output: { width: number; height: number; ppi: number }
   slots: FrameSlot[]
   layers?: FrameLayer[]
@@ -199,7 +208,10 @@ export function parseFrameImport(source: string): TemplateManifest {
   const output = { width: value.output.width || 1200, height: value.output.height || 1800, ppi: Math.max(72, Math.min(600, finiteOr(value.output.ppi, 300))) }
   const qrPlacement = value.qrPlacement && [value.qrPlacement.x, value.qrPlacement.y, value.qrPlacement.size].every(number => typeof number === 'number' && Number.isFinite(number))
     ? clampFrameQrPlacement(value.qrPlacement, { output } as TemplateManifest) : undefined
-  return { id: value.id.startsWith('custom-') ? value.id : `custom-${value.id}`, name: value.name.slice(0, 48), description: value.description?.slice(0, 120) || 'Imported custom layout.', rows: value.rows || 1, columns: value.columns || 1, requiredSlots: slots.length, printLabel: value.printLabel || '4 × 6 in postcard', output, slots, layers, fontAssets, background, qrPlacement, theme: safeTheme, createdAt: value.createdAt || new Date().toISOString() }
+  const printLayout = value.printLayout && (value.printLayout.mode === 'single' || value.printLayout.mode === 'duplicate-2up')
+    ? { mode: value.printLayout.mode, gutterMm: Math.max(0, Math.min(5, finiteOr(value.printLayout.gutterMm, 0))), cutGuide: value.printLayout.cutGuide === true }
+    : undefined
+  return { id: value.id.startsWith('custom-') ? value.id : `custom-${value.id}`, name: value.name.slice(0, 48), description: value.description?.slice(0, 120) || 'Imported custom layout.', rows: value.rows || 1, columns: value.columns || 1, requiredSlots: slots.length, printLabel: value.printLabel || '4 × 6 in postcard', printLayout, output, slots, layers, fontAssets, background, qrPlacement, theme: safeTheme, createdAt: value.createdAt || new Date().toISOString() }
 }
 
 function finiteOr(value: number | undefined, fallback: number): number {

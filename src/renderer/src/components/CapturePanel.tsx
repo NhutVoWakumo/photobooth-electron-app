@@ -3,6 +3,7 @@ import type { CameraState } from '../hooks/useCamera'
 import { getTemplateCopy, type TemplateManifest } from '../templates'
 import type { BoothSettings, BoothStage } from '../types'
 import { FrameArtwork } from './FrameArtwork'
+import { photoEffectFilter } from '../lib/photoEffect'
 import { SelectionBoard } from './SelectionBoard'
 import { StripPreview } from './StripPreview'
 import { BrandLogo } from './BrandLogo'
@@ -23,7 +24,7 @@ export function CapturePanel(props: CapturePanelProps): JSX.Element {
   const { camera, sessionKey, stage, settings, template, onBegin, onRestart, onStageChange } = props
   const videoRef = useRef<HTMLVideoElement>(null)
   const captureInFlightRef = useRef(false)
-  const [countdown, setCountdown] = useState(settings.countdownSeconds)
+  const [countdown, setCountdown] = useState(settings.firstPhotoCountdownSeconds)
   const [captures, setCaptures] = useState<string[]>([])
   const [assignedPhotos, setAssignedPhotos] = useState<Array<string | null>>([])
   const [pendingPhoto, setPendingPhoto] = useState<string | null>(null)
@@ -73,7 +74,7 @@ export function CapturePanel(props: CapturePanelProps): JSX.Element {
   useEffect(() => {
     if (stage !== 'countdown') return
     captureInFlightRef.current = false
-    let remainingSeconds = settings.countdownSeconds
+    let remainingSeconds = attempts === 0 ? settings.firstPhotoCountdownSeconds : settings.nextPhotoCountdownSeconds
     setCountdown(remainingSeconds)
     if (remainingSeconds === 0) {
       const timer = window.setTimeout(captureFrame, 0)
@@ -90,7 +91,7 @@ export function CapturePanel(props: CapturePanelProps): JSX.Element {
     return () => window.clearInterval(timer)
   // captureFrame reads the current video element when the countdown ends.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, settings.countdownSeconds])
+  }, [stage, settings.firstPhotoCountdownSeconds, settings.nextPhotoCountdownSeconds])
 
   useEffect(() => {
     if (stage !== 'photo-review') return
@@ -119,6 +120,7 @@ export function CapturePanel(props: CapturePanelProps): JSX.Element {
       return
     }
 
+    context.filter = photoEffectFilter(settings.photoEffect)
     if (settings.mirrorCamera) {
       context.translate(canvas.width, 0)
       context.scale(-1, 1)
@@ -250,7 +252,7 @@ export function CapturePanel(props: CapturePanelProps): JSX.Element {
         <div className="camera-frame">
           <div className="viewfinder-corner top-left" /><div className="viewfinder-corner top-right" /><div className="viewfinder-corner bottom-left" /><div className="viewfinder-corner bottom-right" />
           <span className="live-badge"><i /> {camera.stream ? tr(settings.language, 'Xem trước trực tiếp', 'Live preview') : tr(settings.language, 'Máy ảnh ngoại tuyến', 'Camera offline')}</span>
-          <video ref={attachVideo} className={`camera-video ${settings.mirrorCamera ? 'mirrored' : ''}`} autoPlay muted playsInline aria-label={t(settings.language, 'liveCameraPreview')} />
+          <video ref={attachVideo} className={`camera-video ${settings.mirrorLiveView ? 'mirrored' : ''}`} style={{ filter: photoEffectFilter(settings.photoEffect) }} autoPlay muted playsInline aria-label={t(settings.language, 'liveCameraPreview')} />
           {!camera.stream && !isRequesting && <span className="camera-note">{tr(settings.language, 'Cho phép máy ảnh để bắt đầu phiên chụp', 'Allow camera access to start your session')}</span>}
           {stage === 'countdown' && <strong className="countdown" aria-live="assertive">{countdown || '✓'}</strong>}
         </div>

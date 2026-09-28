@@ -6,7 +6,7 @@ import { shapeBorderRadius, shapeClipPath } from '../lib/frameGeometry'
 import { slotMaskStyle } from '../lib/slotMask'
 import type { PhotoTransform } from '../types'
 import { loadFrameFonts } from '../lib/frameFonts'
-import { clampFrameQrPlacement, type FrameQrPlacement } from '../lib/frameQr'
+import { clampFrameQrPlacement, isQrPlaceholderLayer, type FrameQrPlacement } from '../lib/frameQr'
 
 interface FrameArtworkProps {
   template: TemplateManifest
@@ -55,8 +55,9 @@ export function FrameArtwork({ template, photos = [], activeSlot, onSlotClick, s
   // plane, then guest photos, then decorations above them. This means an
   // imported background can never cover the photographs just because its DOM
   // node happens to be rendered later.
-  const lowerLayers = (template.layers ?? []).filter(layer => layer.zIndex < 10)
-  const upperLayers = (template.layers ?? []).filter(layer => layer.zIndex >= 10)
+  const visibleLayers = (template.layers ?? []).filter(layer => !layer.hidden && !(qrDataUrl && isQrPlaceholderLayer(layer)))
+  const lowerLayers = visibleLayers.filter(layer => layer.zIndex < 10)
+  const upperLayers = visibleLayers.filter(layer => layer.zIndex >= 10)
   return (
     <div className={`frame-artwork ${selected ? 'selected' : ''}`} aria-label={label ?? `${tr(language, 'Xem trước khung', 'Frame preview')}: ${getTemplateCopy(language, template).name}`} role="img" style={themeStyle}>
       {lowerLayers.map(layer => <ArtworkLayer key={layer.id} layer={layer} />)}
@@ -70,7 +71,7 @@ export function FrameArtwork({ template, photos = [], activeSlot, onSlotClick, s
           // from being stretched into a fixed, portrait-only middle area.
           const slotStyle = { left: `${slot.x * 100}%`, top: `${slot.y * 100}%`, width: `${slot.width * 100}%`, height: `${slot.height * 100}%`, clipPath: shapeClipPath(slot.shape), borderRadius: shapeBorderRadius(slot.shape, slot.radius), ...slotMaskStyle(slot.shape === 'custom' ? slot.mask : undefined), transform: slot.rotation ? `rotate(${slot.rotation}deg)` : undefined, zIndex: slot.zIndex ?? 10, boxShadow: slot.strokeWidth ? `inset 0 0 0 ${slot.strokeWidth}px ${slot.stroke ?? template.theme.ink}` : undefined, display: slot.hidden ? 'none' : undefined }
           const pointerProps = onPhotoTransform ? { onPointerDown: (event: PointerEvent<HTMLElement>) => pointerDown(event, index), onPointerMove: pointerMove, onPointerUp: pointerUp, onPointerCancel: pointerUp } : {}
-          return onSlotClick ? <button aria-label={tr(language, `Thay ảnh trong ô ${index + 1}`, `Replace photo in slot ${index + 1}`)} className={className} key={slot.id} style={slotStyle} onClick={() => onSlotClick(index)} {...pointerProps}>{content}</button> : <span className={className} key={slot.id} style={slotStyle} {...pointerProps}>{content}</span>
+          return onSlotClick ? <button aria-label={tr(language, `Chọn ảnh trong ô ${index + 1}`, `Select photo in slot ${index + 1}`)} aria-pressed={activeSlot === index} data-slot-label={tr(language, `Ảnh ${index + 1}`, `Photo ${index + 1}`)} className={className} key={slot.id} style={slotStyle} onClick={() => onSlotClick(index)} {...pointerProps}>{content}</button> : <span className={className} key={slot.id} style={slotStyle} {...pointerProps}>{content}</span>
         })}
       </div>
       {upperLayers.map(layer => <ArtworkLayer key={layer.id} layer={layer} />)}

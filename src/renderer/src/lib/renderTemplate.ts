@@ -1,9 +1,9 @@
-import type { FrameBackground, FrameLayer, FrameSlot, FrameStickerLayer, TemplateManifest } from '../templates'
+import { framePrintLayout, isTwoUpCompatible, type FrameBackground, type FrameLayer, type FrameSlot, type FrameStickerLayer, type TemplateManifest } from '../templates'
 import { radialShapePoints } from './frameGeometry'
 import { loadFrameFonts } from './frameFonts'
 import type { PhotoTransform } from '../types'
 import QRCode from 'qrcode'
-import { clampFrameQrPlacement, type FrameQrPlacement } from './frameQr'
+import { clampFrameQrPlacement, isQrPlaceholderLayer, type FrameQrPlacement } from './frameQr'
 
 export interface TemplateRenderOptions {
   eventName: string
@@ -19,6 +19,7 @@ export interface PrintSheet {
   layoutId: 'single-4x6' | 'two-up-4x6'
   width: number
   height: number
+  ppi: number
   copiesPerSheet: number
 }
 
@@ -48,7 +49,7 @@ export async function renderTemplate({ eventName, photos, template, outputJpegQu
   const masks = await Promise.all(template.slots.map(slot => slot.shape === 'custom' && slot.mask ? loadImage(slot.mask) : Promise.resolve(undefined)))
   const renderables = [
     ...template.slots.map((slot, index) => ({ kind: 'slot' as const, zIndex: slot.zIndex ?? 10, slot, image: images[index] })).filter(item => !item.slot.hidden),
-    ...(template.layers ?? []).filter(layer => !layer.hidden).map(layer => ({ kind: 'layer' as const, zIndex: layer.zIndex, layer }))
+    ...(template.layers ?? []).filter(layer => !layer.hidden && !(qr && isQrPlaceholderLayer(layer))).map(layer => ({ kind: 'layer' as const, zIndex: layer.zIndex, layer }))
   ].sort((a, b) => a.zIndex - b.zIndex)
 
   for (const item of renderables) {
@@ -266,17 +267,18 @@ function drawBackground(context: CanvasRenderingContext2D, background: FrameBack
  * Makes the exact file Phase 3 will hand to an OS printer. A 2 × 6 strip is
  * duplicated side-by-side on a 4 × 6 sheet; 4 × 6 templates stay one-up.
  */
-export async function renderPrintSheet(strip: string, template: TemplateManifest, outputJpegQuality: number): Promise<PrintSheet> {
+export async function renderPrintSheet(strip: string, template: TemplateManifest, outputJpegQuality: number, options: { twoBySix?: boolean } = {}): Promise<PrintSheet> {
   const printWidth = 1200
   const printHeight = 1800
 
-  const isTwoBySixStrip = template.output.width * 3 === template.output.height
+  const isTwoBySixStrip = isTwoUpCompatible(template)
   if (!isTwoBySixStrip) {
     return {
       dataUrl: strip,
       layoutId: 'single-4x6',
       width: template.output.width,
       height: template.output.height,
+      ppi: template.output.ppi,
       copiesPerSheet: 1
     }
   }
@@ -290,15 +292,38 @@ export async function renderPrintSheet(strip: string, template: TemplateManifest
 
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, printWidth, printHeight)
-  context.drawImage(image, 0, 0, printWidth / 2, printHeight)
-  context.drawImage(image, printWidth / 2, 0, printWidth / 2, printHeight)
+  const layout = framePrintLayout(template)
+  if (options.twoBySix === false) layout.mode = 'single'
+  else if (options.twoBySix === true && isTwoUpCompatible(template)) layout.mode = 'duplicate-2up'
+  const gutterPx = layout.mode === 'duplicate-2up' ? Math.round(layout.gutterMm / 25.4 * 300) : 0
+  const copies = layout.mode === 'duplicate-2up' ? 2 : 1
+  const cellWidth = layout.mode === 'duplicate-2up' ? (printWidth - gutterPx) / 2 : printWidth
+  for (let index = 0; index < copies; index += 1) {
+    const scale = Math.min(cellWidth / image.width, printHeight / image.height)
+    const drawWidth = image.width * scale
+    const drawHeight = image.height * scale
+    const cellX = index * (cellWidth + gutterPx)
+    context.drawImage(image, cellX + (cellWidth - drawWidth) / 2, (printHeight - drawHeight) / 2, drawWidth, drawHeight)
+  }
+  if (copies === 2 && layout.cutGuide && gutterPx >= 8) {
+    context.save()
+    context.strokeStyle = '#68746b'
+    context.lineWidth = 2
+    context.setLineDash([12, 10])
+    context.beginPath()
+    context.moveTo(printWidth / 2, 8)
+    context.lineTo(printWidth / 2, printHeight - 8)
+    context.stroke()
+    context.restore()
+  }
 
   return {
     dataUrl: canvas.toDataURL('image/jpeg', outputJpegQuality),
-    layoutId: 'two-up-4x6',
+    layoutId: copies === 2 ? 'two-up-4x6' : 'single-4x6',
     width: printWidth,
     height: printHeight,
-    copiesPerSheet: 2
+    ppi: 300,
+    copiesPerSheet: copies
   }
 }
 

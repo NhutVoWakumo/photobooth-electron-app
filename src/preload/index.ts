@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('booth', {
   deleteWorkspace: (id: string) => ipcRenderer.invoke('storage:delete-workspace', id),
   loadSettings: () => ipcRenderer.invoke('storage:load-settings'),
   saveSettings: (value: unknown) => ipcRenderer.invoke('storage:save-settings', value),
+  checkForUpdates: () => ipcRenderer.invoke('app:check-updates'),
+  openUpdatePage: (url: string) => ipcRenderer.invoke('app:open-update-page', url),
   exportImage: (input: { eventName: string; dataUrl: string }) => ipcRenderer.invoke('output:export-image', input),
   listPrinters: () => ipcRenderer.invoke('printer:list'),
   printImage: (input: { printerName: string; dataUrl: string; width: number; height: number; ppi: number; profile: import('../shared/printProfile').PrinterProfile }) => ipcRenderer.invoke('printer:print-image', input),

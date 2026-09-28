@@ -21,9 +21,11 @@ interface Window {
     deleteWorkspace: (id: string) => Promise<void>
     loadSettings: () => Promise<unknown | null>
     saveSettings: (settings: unknown) => Promise<void>
+    checkForUpdates: () => Promise<{ currentVersion: string; latestVersion: string; updateAvailable: boolean; releaseUrl: string }>
+    openUpdatePage: (url: string) => Promise<void>
     exportImage: (input: { eventName: string; dataUrl: string }) => Promise<{ outputPath: string }>
     listPrinters: () => Promise<Array<{ name: string; displayName: string; description: string }>>
-    printImage: (input: { printerName: string; dataUrl: string; width: number; height: number; ppi: number; profile: import('../../shared/printProfile').PrinterProfile }) => Promise<void>
+    printImage: (input: { printerName: string; dataUrl: string; width: number; height: number; ppi: number; profile: import('../../shared/printProfile').PrinterProfile; autoRotate?: boolean; copies?: number }) => Promise<void>
     driveConnect: () => Promise<void>
     driveImportOAuthFile: () => Promise<boolean>
     driveStatus: () => Promise<{ configured: boolean; connected: boolean; pending: number; message: string }>

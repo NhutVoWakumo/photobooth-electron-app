@@ -1,7 +1,18 @@
 export type BoothStage = 'idle' | 'session-list' | 'session-detail' | 'frame-editor' | 'template-picker' | 'frame-preview' | 'capture' | 'countdown' | 'photo-review' | 'selection' | 'review' | 'slot-capture'
 import type { Language } from './i18n'
 import type { TemplateManifest } from './templates'
-import type { PrinterProfile } from '../../shared/printProfile'
+import type { PaperSize, PrinterProfile } from '../../shared/printProfile'
+
+export interface SessionPrintSettings {
+  paper?: PaperSize | null
+  printAutomatically?: boolean
+  showPrintButton?: boolean
+  autoRotatePrint?: boolean
+  maxPrintsPerSession?: number
+  maxPrintsPerEvent?: number
+  hidePrintButtonAfterLimit?: boolean
+  printTwoBySix?: boolean
+}
 
 export interface BoothSettings {
   language: Language
@@ -10,6 +21,19 @@ export interface BoothSettings {
   cameraId: string
   cameraName: string
   mirrorCamera: boolean
+  mirrorLiveView: boolean
+  liveViewEnabled: boolean
+  autoTriggerAfterCountdown: boolean
+  cameraRotation: 0 | 90 | 180 | 270
+  displayCameraOnStartScreen: boolean
+  photoEffect: 'none' | 'monochrome' | 'sepia'
+  showPrintButton: boolean
+  printAutomatically: boolean
+  autoRotatePrint: boolean
+  maxPrintsPerSession: number
+  maxPrintsPerEvent: number
+  hidePrintButtonAfterLimit: boolean
+  printTwoBySix: boolean
   printerName: string
   printerProfiles: Record<string, PrinterProfile>
   captureMode: 'guided' | 'batch'
@@ -17,7 +41,8 @@ export interface BoothSettings {
   retakePolicy: 'limited' | 'unlimited'
   preCaptureDelayMs: number
   postCaptureReviewMs: number
-  countdownSeconds: number
+  firstPhotoCountdownSeconds: number
+  nextPhotoCountdownSeconds: number
   captureJpegQuality: number
   outputJpegQuality: number
   motionLevel: 'low' | 'medium' | 'high'
@@ -47,6 +72,7 @@ export interface SessionFrameSet {
   createdAt: string
   updatedAt: string
   status: 'draft' | 'complete'
+  printCount?: number
   photos: SessionPhoto[]
   assignments: Array<string | null>
   slotPositions?: number[]
@@ -60,6 +86,9 @@ export interface BoothSession {
   createdAt: string
   updatedAt: string
   frames: SessionFrameSet[]
+  eventPrintCount?: number
+  printSettings?: SessionPrintSettings
+  captureControlsPosition?: 'bottom' | 'left' | 'right'
   qrEnabled?: boolean
   qrSyncedSignature?: string
 }
@@ -71,18 +100,32 @@ export const defaultSettings: BoothSettings = {
   cameraId: '',
   cameraName: 'No camera selected',
   mirrorCamera: true,
+  mirrorLiveView: true,
+  liveViewEnabled: true,
+  autoTriggerAfterCountdown: true,
+  cameraRotation: 0,
+  displayCameraOnStartScreen: false,
+  photoEffect: 'none',
+  showPrintButton: true,
+  printAutomatically: false,
+  autoRotatePrint: true,
+  maxPrintsPerSession: 5,
+  maxPrintsPerEvent: 100,
+  hidePrintButtonAfterLimit: true,
+  printTwoBySix: true,
   printerName: 'none',
   printerProfiles: {},
   captureMode: 'guided',
   extraCaptureAllowance: 2,
   retakePolicy: 'limited',
   preCaptureDelayMs: 1000,
-  postCaptureReviewMs: 2000,
-  countdownSeconds: 10,
+  postCaptureReviewMs: 3000,
+  firstPhotoCountdownSeconds: 10,
+  nextPhotoCountdownSeconds: 5,
   captureJpegQuality: 0.92,
   outputJpegQuality: 0.94,
   motionLevel: 'medium',
-  timingDefaultsVersion: 2,
+  timingDefaultsVersion: 3,
   enabledFrameIds: ['classic-4x1', 'grid-3x2', 'portrait-1x1'],
   customFrames: []
 }

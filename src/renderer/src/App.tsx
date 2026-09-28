@@ -22,18 +22,39 @@ const storageKey = 'luma-booth-settings-v2'
 
 function normalizeSettings(value: unknown): BoothSettings {
   try {
-    const saved = ((typeof value === 'string' ? JSON.parse(value) : value) ?? {}) as Partial<BoothSettings>
+    const saved = { ...(((typeof value === 'string' ? JSON.parse(value) : value) ?? {}) as Partial<BoothSettings>) }
+    delete (saved as unknown as Record<string, unknown>).startFullscreen
     const savedCustomFrames = Array.isArray(saved.customFrames) ? saved.customFrames.filter(frame => frame && typeof frame.id === 'string' && Array.isArray(frame.slots) && frame.theme) : []
     const customFrames = [...referenceFrames, ...savedCustomFrames.filter(frame => !referenceFrames.some(reference => reference.id === frame.id))]
     const knownFrameIds = new Set([...templates, ...customFrames].map(frame => frame.id))
     const storedEnabled = Array.isArray(saved.enabledFrameIds) ? saved.enabledFrameIds.filter((id): id is string => typeof id === 'string' && knownFrameIds.has(id)) : defaultSettings.enabledFrameIds
     const enabledFrameIds = [...new Set([...storedEnabled, ...referenceFrames.map(frame => frame.id)])]
-    // Migrate the previous defaults once; other custom timing values survive.
-    const legacyDefaults = !saved.timingDefaultsVersion
-    const countdownSeconds = legacyDefaults && saved.countdownSeconds === 3 ? 10 : (saved.countdownSeconds ?? defaultSettings.countdownSeconds)
-    const postCaptureReviewMs = legacyDefaults && saved.postCaptureReviewMs === 3000 ? 2000 : (saved.postCaptureReviewMs ?? defaultSettings.postCaptureReviewMs)
+    // Keep existing custom durations; move the old single countdown to the first shot.
+    const oldCountdown = (saved as Partial<BoothSettings> & { countdownSeconds?: number }).countdownSeconds
+    const timingSeconds = (value: unknown, fallback: number): number =>
+      typeof value === 'number' && Number.isFinite(value) ? Math.max(1, Math.min(30, Math.round(value))) : fallback
+    const previousFirst = !saved.timingDefaultsVersion && oldCountdown === 3 ? 10 : oldCountdown
+    const firstPhotoCountdownSeconds = timingSeconds(saved.firstPhotoCountdownSeconds ?? previousFirst, 10)
+    const nextPhotoCountdownSeconds = timingSeconds(saved.nextPhotoCountdownSeconds, 5)
+    const previousReview = saved.timingDefaultsVersion === 2 && saved.postCaptureReviewMs === 2000
+      ? 3000 : saved.postCaptureReviewMs
+    const postCaptureReviewMs = timingSeconds(typeof previousReview === 'number' ? previousReview / 1000 : undefined, 3) * 1000
     const printerProfiles = Object.fromEntries(Object.entries(saved.printerProfiles ?? {}).filter(([name, profile]) => name !== 'none' && isPrinterProfile(profile)))
-    return { ...defaultSettings, ...saved, printerProfiles, countdownSeconds, postCaptureReviewMs, timingDefaultsVersion: 2, customFrames, enabledFrameIds: enabledFrameIds.length > 0 ? enabledFrameIds : defaultSettings.enabledFrameIds }
+    return { ...defaultSettings, ...saved,
+      mirrorLiveView: typeof saved.mirrorLiveView === 'boolean' ? saved.mirrorLiveView : typeof saved.mirrorCamera === 'boolean' ? saved.mirrorCamera : defaultSettings.mirrorLiveView,
+      liveViewEnabled: typeof saved.liveViewEnabled === 'boolean' ? saved.liveViewEnabled : defaultSettings.liveViewEnabled,
+      autoTriggerAfterCountdown: typeof saved.autoTriggerAfterCountdown === 'boolean' ? saved.autoTriggerAfterCountdown : defaultSettings.autoTriggerAfterCountdown,
+      cameraRotation: [0, 90, 180, 270].includes(saved.cameraRotation as number) ? saved.cameraRotation! : defaultSettings.cameraRotation,
+      displayCameraOnStartScreen: typeof saved.displayCameraOnStartScreen === 'boolean' ? saved.displayCameraOnStartScreen : defaultSettings.displayCameraOnStartScreen,
+      photoEffect: saved.photoEffect === 'monochrome' || saved.photoEffect === 'sepia' ? saved.photoEffect : 'none',
+      showPrintButton: typeof saved.showPrintButton === 'boolean' ? saved.showPrintButton : true,
+      printAutomatically: typeof saved.printAutomatically === 'boolean' ? saved.printAutomatically : defaultSettings.printAutomatically,
+      autoRotatePrint: typeof saved.autoRotatePrint === 'boolean' ? saved.autoRotatePrint : defaultSettings.autoRotatePrint,
+      maxPrintsPerSession: typeof saved.maxPrintsPerSession === 'number' ? Math.max(1, Math.min(20, Math.round(saved.maxPrintsPerSession))) : defaultSettings.maxPrintsPerSession,
+      maxPrintsPerEvent: typeof saved.maxPrintsPerEvent === 'number' ? Math.max(1, Math.min(500, Math.round(saved.maxPrintsPerEvent))) : defaultSettings.maxPrintsPerEvent,
+      hidePrintButtonAfterLimit: typeof saved.hidePrintButtonAfterLimit === 'boolean' ? saved.hidePrintButtonAfterLimit : defaultSettings.hidePrintButtonAfterLimit,
+      printTwoBySix: typeof saved.printTwoBySix === 'boolean' ? saved.printTwoBySix : defaultSettings.printTwoBySix,
+      printerProfiles, firstPhotoCountdownSeconds, nextPhotoCountdownSeconds, postCaptureReviewMs, timingDefaultsVersion: 3, customFrames, enabledFrameIds: enabledFrameIds.length > 0 ? enabledFrameIds : defaultSettings.enabledFrameIds }
   } catch { return defaultSettings }
 }
 
@@ -43,7 +64,7 @@ function readSettings(): BoothSettings {
 
 function newSession(index: number): BoothSession {
   const now = new Date().toISOString()
-  return { id: crypto.randomUUID(), name: `Session ${String(index + 1).padStart(2, '0')}`, createdAt: now, updatedAt: now, frames: [] }
+  return { id: crypto.randomUUID(), name: `Session ${String(index + 1).padStart(2, '0')}`, createdAt: now, updatedAt: now, frames: [], captureControlsPosition: 'bottom' }
 }
 
 export function App(): JSX.Element {
@@ -76,11 +97,31 @@ export function App(): JSX.Element {
   }, [])
   useEffect(() => { void listStoredSessions().then(value => { setSessions(current => [...value, ...current.filter(session => !value.some(stored => stored.id === session.id))].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))); setStorageStatus('ready') }).catch(() => setStorageStatus('error')) }, [])
   useEffect(() => { window.scrollTo(0, 0) }, [stage, activeFrameId])
+  useEffect(() => {
+    if (stage !== 'idle' || !settings.displayCameraOnStartScreen) return
+    if (camera.status !== 'ready' || !camera.stream) void camera.startCamera(settings.cameraId || undefined)
+    return () => camera.stopCamera()
+  }, [stage, settings.displayCameraOnStartScreen, settings.cameraId])
 
   const availableTemplates = [...templates, ...settings.customFrames].filter(template => settings.enabledFrameIds.includes(template.id))
   const activeSession = sessions.find(session => session.id === activeSessionId) ?? null
   const activeFrame = activeSession?.frames.find(frame => frame.id === activeFrameId) ?? null
   const activeTemplate = activeFrame ? (() => { try { return getTemplate(activeFrame.templateId, settings.customFrames) } catch { return availableTemplates[0] ?? templates[0] } })() : availableTemplates[0] ?? templates[0]
+  const activeGlobalProfile = activeSession ? settings.printerProfiles?.[settings.printerName] : undefined
+  const activePaper = activeSession?.printSettings?.paper
+  const activeSessionSettings: BoothSettings = activeSession ? {
+    ...settings,
+    printAutomatically: activeSession.printSettings?.printAutomatically ?? settings.printAutomatically,
+    showPrintButton: activeSession.printSettings?.showPrintButton ?? settings.showPrintButton,
+    autoRotatePrint: activeSession.printSettings?.autoRotatePrint ?? settings.autoRotatePrint,
+    maxPrintsPerSession: activeSession.printSettings?.maxPrintsPerSession ?? settings.maxPrintsPerSession,
+    maxPrintsPerEvent: activeSession.printSettings?.maxPrintsPerEvent ?? settings.maxPrintsPerEvent,
+    hidePrintButtonAfterLimit: activeSession.printSettings?.hidePrintButtonAfterLimit ?? settings.hidePrintButtonAfterLimit,
+    printTwoBySix: activeSession.printSettings?.printTwoBySix ?? settings.printTwoBySix,
+    printerProfiles: activeSession.printSettings?.paper && settings.printerName !== 'none'
+      ? { ...settings.printerProfiles, [settings.printerName]: { ...(activeGlobalProfile ?? { paper: activeSession.printSettings.paper, marginMm: 3, fit: 'contain' as const }), paper: activeSession.printSettings.paper } }
+      : settings.printerProfiles
+  } : settings
 
   const persistSession = (session: BoothSession) => {
     setSessions(current => [session, ...current.filter(item => item.id !== session.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
@@ -103,7 +144,7 @@ export function App(): JSX.Element {
     void deleteStoredSession(session.id).catch(() => setStorageStatus('error'))
     void window.booth?.driveQueueDeletion(session.id).catch(() => setStorageStatus('error'))
   }
-  const beginNewFrame = () => { setActiveFrameId(null); setStage('template-picker') }
+  const beginNewFrame = () => { camera.stopCamera(); setActiveFrameId(null); setStage('template-picker') }
   const createFrameFromTemplate = (template: TemplateManifest) => {
     if (!activeSession) return
     const now = new Date().toISOString()
@@ -165,22 +206,40 @@ export function App(): JSX.Element {
       return [nextSession, ...current.filter(item => item.id !== nextSession.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     })
   }
+  const recordPrint = (copies = 1) => {
+    if (!activeSessionId || !activeFrameId) return
+    setSessions(current => {
+      const session = current.find(item => item.id === activeSessionId)
+      if (!session) return current
+      const now = new Date().toISOString()
+      const nextSession = { ...session, eventPrintCount: (session.eventPrintCount ?? 0) + copies, frames: session.frames.map(item => item.id === activeFrameId ? { ...item, printCount: (item.printCount ?? 0) + copies, updatedAt: now } : item), updatedAt: now }
+      void saveStoredSession(nextSession).catch(() => setStorageStatus('error'))
+      return [nextSession, ...current.filter(item => item.id !== nextSession.id)]
+    })
+  }
   const openFrame = (frame: SessionFrameSet) => { setActiveFrameId(frame.id); setStage('frame-editor') }
-  const removeFrame = (frame: SessionFrameSet) => {
-    if (!activeSession || !window.confirm(settings.language === 'vi' ? 'Xóa frame này khỏi session?' : 'Delete this frame from the session?')) return
+  const removeFrame = async (frame: SessionFrameSet) => {
+    if (!activeSession || !window.confirm(settings.language === 'vi' ? 'Xóa frame này khỏi session và xóa bản đã đồng bộ trên Google Drive nếu có?' : 'Delete this frame from the session and remove its synced copy from Google Drive, if present?')) return
     persistSession({ ...activeSession, frames: activeSession.frames.filter(item => item.id !== frame.id), updatedAt: new Date().toISOString() })
-    void window.booth?.driveQueueDeletion(activeSession.id, frame.id).catch(() => setStorageStatus('error'))
     if (activeFrameId === frame.id) { camera.stopCamera(); setActiveFrameId(null); setStage('session-detail') }
+    if (window.booth) {
+      await window.booth.driveQueueDeletion(activeSession.id, frame.id)
+      const drive = await window.booth.driveStatus()
+      window.dispatchEvent(new Event('luma-drive-changed'))
+      if (drive.message) throw new Error(settings.language === 'vi'
+        ? `Frame đã được xóa khỏi session trên máy, nhưng Drive chưa xóa xong. App sẽ thử lại khi Drive kết nối: ${drive.message}`
+        : `The frame was removed from this session, but Drive could not finish deleting it. The app will retry when Drive is available: ${drive.message}`)
+    }
   }
 
   let content: JSX.Element
   if (stage === 'session-list') content = <SessionList language={settings.language} sessions={sessions} templates={[...templates, ...settings.customFrames]} onBack={() => setStage('idle')} onCreate={createSession} onOpen={openSession} onDelete={removeSession} />
   else if (stage === 'template-picker') content = <TemplatePicker language={settings.language} templates={availableTemplates} onChoose={createFrameFromTemplate} onBack={() => setStage('session-detail')} />
   else if (stage === 'slot-capture' && activeSession && activeFrame) {
-    content = <SlotCapture key={activeFrame.id} camera={camera} language={settings.language} settings={settings} template={activeTemplate} sessionId={activeSession.id} sessionName={activeSession.name} qrEnabled={activeSession.qrEnabled !== false} frame={activeFrame} initialSlot={activeSlot} onAccept={acceptCapture} onChange={updateActiveFrame} onDelete={() => removeFrame(activeFrame)} onCancel={() => { camera.stopCamera(); setStage('session-detail') }} onRetryCamera={() => void retryCamera()} />
-  } else if (stage === 'frame-editor' && activeSession && activeFrame) content = <FrameSetEditor language={settings.language} settings={settings} sessionId={activeSession.id} sessionName={activeSession.name} qrEnabled={activeSession.qrEnabled !== false} frame={activeFrame} template={activeTemplate} onBack={() => setStage('session-detail')} onChange={updateActiveFrame} onCaptureSlot={slotIndex => void captureSlot(slotIndex)} />
+    content = <SlotCapture key={activeFrame.id} camera={camera} language={settings.language} settings={activeSessionSettings} template={activeTemplate} sessionId={activeSession.id} sessionName={activeSession.name} qrEnabled={activeSession.qrEnabled !== false} frame={activeFrame} controlsPosition={activeSession.captureControlsPosition ?? 'bottom'} eventPrintCount={activeSession.eventPrintCount ?? 0} onPrinted={recordPrint} initialSlot={activeSlot} onAccept={acceptCapture} onChange={updateActiveFrame} onDelete={() => removeFrame(activeFrame)} onCancel={() => { camera.stopCamera(); setStage('session-detail') }} onNextFrame={beginNewFrame} onRetryCamera={() => void retryCamera()} />
+  } else if (stage === 'frame-editor' && activeSession && activeFrame) content = <FrameSetEditor language={settings.language} settings={activeSessionSettings} sessionId={activeSession.id} sessionName={activeSession.name} qrEnabled={activeSession.qrEnabled !== false} frame={activeFrame} eventPrintCount={activeSession.eventPrintCount ?? 0} onPrinted={recordPrint} template={activeTemplate} onBack={() => setStage('session-detail')} onChange={updateActiveFrame} onCaptureSlot={slotIndex => void captureSlot(slotIndex)} />
   else if (stage === 'session-detail' && activeSession) content = <SessionFrames language={settings.language} settings={settings} session={activeSession} templates={[...templates, ...settings.customFrames]} onChangeSession={persistSession} onBack={() => setStage('session-list')} onNew={beginNewFrame} onOpen={openFrame} onDelete={removeFrame} />
-  else content = <SessionHome language={settings.language} welcomeHeading={settings.welcomeHeading} sessionCount={sessions.length} onCreate={createSession} onView={() => setStage('session-list')} />
+  else content = <SessionHome language={settings.language} welcomeHeading={settings.welcomeHeading} sessionCount={sessions.length} cameraStream={settings.displayCameraOnStartScreen ? camera.stream : null} cameraRotation={settings.cameraRotation} mirrorLiveView={settings.mirrorLiveView} onCreate={createSession} onView={() => setStage('session-list')} />
 
   return <main className="app-shell" data-motion={settings.motionLevel} data-stage={stage} ref={appRef}>
     <KioskMotion level={settings.motionLevel} scope={appRef} stage={stage} />
@@ -188,7 +247,7 @@ export function App(): JSX.Element {
     <button className="settings-fab" onClick={() => { setSettingsTab('general'); setSettingsOpen(true) }}>{t(settings.language, 'settings')}</button>
     {storageStatus === 'error' && <p className="storage-error" role="alert">{settings.language === 'vi' ? 'Không thể lưu thư viện phiên trên máy này.' : 'The local session library could not be saved.'}</p>}
     <div className="app-stage">{content}</div>
-    {settingsOpen && studioFrame === undefined && <SettingsPanel settings={settings} cameraDevices={camera.devices} cameraStatus={camera.status} onCameraChange={selectCamera} onChange={setSettings} onRefreshCameras={() => void camera.refreshDevices()} onOpenStudio={openStudio} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />}
+    {settingsOpen && studioFrame === undefined && <SettingsPanel settings={settings} cameraDevices={camera.devices} cameraStatus={camera.status} onCameraChange={selectCamera} onChange={next => setSettings(normalizeSettings(next))} onRefreshCameras={() => void camera.refreshDevices()} onOpenStudio={openStudio} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />}
     {studioFrame !== undefined && <div className="frame-studio-view"><FrameStudio language={settings.language} initialTemplate={studioFrame ?? undefined} onClose={() => setStudioFrame(undefined)} onSave={saveStudioFrame} /></div>}
   </main>
 }
